@@ -1,36 +1,72 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# BNWEMS Web Frontend
 
-## Getting Started
+Web application for the **Binh Nguyen Wedding Event Management System (BNWEMS)** for Admin and Manager roles. Built with Next.js 16 (App Router) + TypeScript + TailwindCSS v4 + Axios.
 
-First, run the development server:
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Framework | Next.js 16 (App Router) |
+| Language | TypeScript 5.x |
+| Styling | TailwindCSS v4 |
+| HTTP Client | Axios (with JWT interceptors) |
+| State | React Context (AuthContext) |
+| Testing | Jest + React Testing Library + jest-dom |
+
+## Quick Start
 
 ```bash
+# 1. Install dependencies
+npm install
+
+# 2. Copy environment file and set the backend API URL
+cp .env.example .env.local
+
+# 3. Start development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The app will run at `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Available Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Script | Description |
+|--------|-------------|
+| `npm run dev` | Start Next.js development server |
+| `npm run build` | Build for production |
+| `npm start` | Run production build |
+| `npm run test` | Run all Jest tests |
+| `npm run test:coverage` | Run tests with coverage report |
 
-## Learn More
+## Project Structure
 
-To learn more about Next.js, take a look at the following resources:
+```
+web-frontend/
+├── src/
+│   ├── app/                     # Next.js App Router pages
+│   │   ├── (auth)/login/        # Login page
+│   │   ├── (admin)/dashboard/   # Admin dashboard
+│   │   └── (manager)/orders/    # Manager order management
+│   ├── components/
+│   │   └── ui/                  # Reusable UI: Button, Input, Badge
+│   ├── services/
+│   │   ├── api.ts               # Axios base instance + interceptors
+│   │   ├── auth.service.ts      # Auth API calls
+│   │   ├── user.service.ts      # User management API calls
+│   │   └── order.service.ts     # Order & equipment API calls
+│   ├── context/
+│   │   └── AuthContext.tsx      # Global JWT & user state
+│   └── hooks/
+│       ├── useAuth.ts           # Auth context hook
+│       └── usePagination.ts     # Pagination state hook
+└── __tests__/                   # Jest tests
+    ├── components/Button.test.tsx
+    ├── services/auth.service.test.ts
+    └── hooks/useAuth.test.ts
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Running Tests
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run test
+```
