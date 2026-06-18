@@ -4,14 +4,14 @@ Web application for the **Binh Nguyen Wedding Event Management System (BNWEMS)**
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Framework | Next.js 16 (App Router) |
-| Language | TypeScript 5.x |
-| Styling | TailwindCSS v4 |
-| HTTP Client | Axios (with JWT interceptors) |
-| State | React Context (AuthContext) |
-| Testing | Jest + React Testing Library + jest-dom |
+| Layer       | Technology                              |
+| ----------- | --------------------------------------- |
+| Framework   | Next.js 16 (App Router)                 |
+| Language    | TypeScript 5.x                          |
+| Styling     | TailwindCSS v4                          |
+| HTTP Client | Axios (with JWT interceptors)           |
+| State       | React Context (AuthContext)             |
+| Testing     | Jest + React Testing Library + jest-dom |
 
 ## Quick Start
 
@@ -30,43 +30,199 @@ The app will run at `http://localhost:3000`.
 
 ## Available Scripts
 
-| Script | Description |
-|--------|-------------|
-| `npm run dev` | Start Next.js development server |
-| `npm run build` | Build for production |
-| `npm start` | Run production build |
-| `npm run test` | Run all Jest tests |
-| `npm run test:coverage` | Run tests with coverage report |
+| Script                  | Description                      |
+| ----------------------- | -------------------------------- |
+| `npm run dev`           | Start Next.js development server |
+| `npm run build`         | Build for production             |
+| `npm start`             | Run production build             |
+| `npm run test`          | Run all Jest tests               |
+| `npm run test:coverage` | Run tests with coverage report   |
 
 ## Project Structure
 
-```
+````
 web-frontend/
+│
+├── public/
+│   ├── images/
+│   ├── icons/
+│   └── favicon.ico
+│
 ├── src/
-│   ├── app/                     # Next.js App Router pages
-│   │   ├── (auth)/login/        # Login page
-│   │   ├── (admin)/dashboard/   # Admin dashboard
-│   │   └── (manager)/orders/    # Manager order management
+│
+│   ├── app/
+│   │
+│   │   ├── (auth)/
+│   │   │   ├── login/
+│   │   │   │   └── page.tsx
+│   │   │   └── forgot-password/
+│   │   │       └── page.tsx
+│   │
+│   │   ├── (admin)/
+│   │   │
+│   │   │   ├── dashboard/
+│   │   │   │   └── page.tsx
+│   │   │
+│   │   │   ├── orders_audit/
+│   │   │   │   ├── page.tsx
+│   │   │   │   ├── create/
+│   │   │   │   └── [id]/
+│   │   │
+│   │   │   ├── customers/
+│   │   │   │   ├── page.tsx
+│   │   │   │   └── [id]/
+│   │   │
+│   │   │   ├── inventory/
+│   │   │   │   ├── equipments/
+│   │   │   │   ├── stock-status/
+│   │   │   │   └── maintenance/
+│   │   │
+│   │   │   ├── suppliers/
+│   │   │   │   ├── page.tsx
+│   │   │   │   └── [id]/
+│   │   │
+│   │   │   ├── procurement/
+│   │   │   │   ├── page.tsx
+│   │   │   │   └── requests/
+│   │   │
+│   │   │   ├── staff/
+│   │   │   │   ├── page.tsx
+│   │   │   │   └── assignments/
+│   │   │
+│   │   │   ├── schedule/
+│   │   │   │   ├── calendar/
+│   │   │   │   └── page.tsx
+│   │   │
+│   │   │   ├── payments/
+│   │   │   │   ├── deposits/
+│   │   │   │   ├── settlements/
+│   │   │   │   └── transactions/
+│   │   │
+│   │   │   ├── debts/
+│   │   │   │   ├── suppliers/
+│   │   │   │   └── staff/
+│   │   │
+│   │   │   ├── reports/
+│   │   │   │   ├── revenue/
+│   │   │   │   ├── inventory/
+│   │   │   │   └── debts/
+│   │   │
+│   │   │   └── settings/
+│   │   │       ├── users/
+│   │   │       ├── roles/
+│   │   │       └── system/
+│   │
+│   │   └── (manager)/
+│   │       │
+│   │       ├── dashboard/
+│   │       ├── orders/
+│   │       ├── customers/
+│   │       ├── inventory/
+│   │       ├── procurement/
+│   │       ├── schedule/
+│   │       └── reports/
+│   │
+│   │
 │   ├── components/
-│   │   └── ui/                  # Reusable UI: Button, Input, Badge
+│   │
+│   │   ├── ui/
+│   │   │   ├── Button.tsx
+│   │   │   ├── Input.tsx
+│   │   │   ├── Select.tsx
+│   │   │   ├── Modal.tsx
+│   │   │   ├── Badge.tsx
+│   │   │   ├── Table.tsx
+│   │   │   └── Pagination.tsx
+│   │
+│   │   ├── layout/
+│   │   │   ├── Sidebar.tsx
+│   │   │   ├── Header.tsx
+│   │   │   ├── Navbar.tsx
+│   │   │   └── ProtectedRoute.tsx
+│   │
+│   │   ├── orders/
+│   │   │   ├── OrderForm.tsx
+│   │   │   ├── OrderTable.tsx
+│   │   │   ├── OrderStatusBadge.tsx
+│   │   │   └── FinalQuotation.tsx
+│   │
+│   │   ├── inventory/
+│   │   │   ├── EquipmentTable.tsx
+│   │   │   ├── StockWarning.tsx
+│   │   │   └── MaintenanceHistory.tsx
+│   │
+│   │   ├── suppliers/
+│   │   │   ├── SupplierTable.tsx
+│   │   │   └── ProcurementRequestForm.tsx
+│   │
+│   │   ├── schedule/
+│   │   │   ├── CalendarView.tsx
+│   │   │   └── AssignmentModal.tsx
+│   │
+│   │   └── reports/
+│   │       ├── RevenueChart.tsx
+│   │       ├── DebtChart.tsx
+│   │       └── DashboardStats.tsx
+│   │
+│   │
 │   ├── services/
-│   │   ├── api.ts               # Axios base instance + interceptors
-│   │   ├── auth.service.ts      # Auth API calls
-│   │   ├── user.service.ts      # User management API calls
-│   │   └── order.service.ts     # Order & equipment API calls
+│   │
+│   │   ├── api.ts
+│   │   ├── auth.service.ts
+│   │   ├── order.service.ts
+│   │   ├── customer.service.ts
+│   │   ├── inventory.service.ts
+│   │   ├── supplier.service.ts
+│   │   ├── procurement.service.ts
+│   │   ├── payment.service.ts
+│   │   ├── staff.service.ts
+│   │   ├── debt.service.ts
+│   │   └── report.service.ts
+│   │
 │   ├── context/
-│   │   └── AuthContext.tsx      # Global JWT & user state
+│   │   ├── AuthContext.tsx
+│   │   └── PermissionContext.tsx
+│   │
+│   ├── hooks/
+│   │   ├── useAuth.ts
+│   │   ├── usePagination.ts
+│   │   ├── useDebounce.ts
+│   │   └── usePermission.ts
+│   │
+│   ├── types/
+│   │   ├── auth.ts
+│   │   ├── order.ts
+│   │   ├── customer.ts
+│   │   ├── inventory.ts
+│   │   ├── supplier.ts
+│   │   ├── payment.ts
+│   │   └── report.ts
+│   │
+│   ├── constants/
+│   │   ├── roles.ts
+│   │   ├── order-status.ts
+│   │   └── permissions.ts
+│   │
+│   ├── utils/
+│   │   ├── formatCurrency.ts
+│   │   ├── formatDate.ts
+│   │   └── exportExcel.ts
+│   │
+│   └── middleware.ts
+│
+├── __tests__/
+│   ├── components/
+│   ├── services/
 │   └── hooks/
-│       ├── useAuth.ts           # Auth context hook
-│       └── usePagination.ts     # Pagination state hook
-└── __tests__/                   # Jest tests
-    ├── components/Button.test.tsx
-    ├── services/auth.service.test.ts
-    └── hooks/useAuth.test.ts
-```
+│
+├── .env.local
+├── package.json
+├── tsconfig.json
+└── next.config.js
+....
 
 ## Running Tests
 
 ```bash
 npm run test
-```
+````
