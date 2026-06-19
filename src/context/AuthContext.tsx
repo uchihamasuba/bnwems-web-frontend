@@ -2,18 +2,12 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-export interface UserRole {
-  id: number;
-  roleName: string;
-  permissions: string[];
-}
-
 export interface AuthUser {
   id: number;
   username: string;
-  fullName: string;
-  email: string;
-  role: UserRole;
+  full_name: string;
+  role: string;
+  platform_access: string;
 }
 
 interface AuthContextValue {

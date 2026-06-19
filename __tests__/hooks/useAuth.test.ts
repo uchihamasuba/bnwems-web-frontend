@@ -42,9 +42,8 @@ describe('AuthContext — useAuthContext()', () => {
     });
 
     const mockUser = {
-      id: 1, username: 'manager_test', fullName: 'Test Manager',
-      email: 'test@test.com',
-      role: { id: 2, roleName: 'Manager', permissions: ['VIEW_ORDER_LIST'] },
+      id: 1, username: 'manager_test', full_name: 'Test Manager',
+      role: 'Manager', platform_access: 'web',
     };
 
     act(() => {
@@ -62,8 +61,8 @@ describe('AuthContext — useAuthContext()', () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
     const mockUser = {
-      id: 1, username: 'test', fullName: 'Test', email: 't@t.com',
-      role: { id: 1, roleName: 'Admin', permissions: [] },
+      id: 1, username: 'test', full_name: 'Test',
+      role: 'Admin', platform_access: 'web',
     };
 
     act(() => result.current.login('tok', mockUser));

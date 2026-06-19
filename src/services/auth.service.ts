@@ -3,6 +3,7 @@ import api from './api';
 export interface LoginPayload {
   username: string;
   password: string;
+  device_type?: 'web' | 'android' | 'ios';
 }
 
 export interface ChangePasswordPayload {

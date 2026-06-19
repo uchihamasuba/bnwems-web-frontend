@@ -4,9 +4,52 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
   helpText?: string;
+  icon?: React.ReactNode;
+  trailingIcon?: React.ReactNode;
+  variant?: 'bordered' | 'underline';
 }
 
-export const Input: React.FC<InputProps> = ({ label, error, helpText, id, className = '', ...props }) => {
+export const Input: React.FC<InputProps> = ({
+  label,
+  error,
+  helpText,
+  icon,
+  trailingIcon,
+  variant = 'bordered',
+  id,
+  className = '',
+  ...props
+}) => {
+  const isUnderline = variant === 'underline';
+
+  let leadingPadding = '';
+  if (icon) leadingPadding = isUnderline ? 'pl-7' : 'pl-10';
+
+  let trailingPadding = '';
+  if (isUnderline && trailingIcon) trailingPadding = 'pr-7';
+
+  let borderColor = isUnderline ? 'border-gray-200' : 'border-gray-300 bg-white';
+  if (error) borderColor = isUnderline ? 'border-red-400' : 'border-red-400 bg-red-50';
+
+  let fieldClassName = `
+        block w-full rounded-lg border px-3 py-2 text-sm text-gray-900 shadow-sm
+        placeholder:text-gray-400
+        focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+        disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed
+        transition-colors duration-150
+        ${leadingPadding} ${borderColor}
+      `;
+  if (isUnderline) {
+    fieldClassName = `
+        block w-full border-0 border-b-2 bg-transparent px-0 py-2 text-sm text-gray-900
+        placeholder:text-gray-400
+        focus:outline-none focus:border-blue-600
+        disabled:text-gray-400 disabled:cursor-not-allowed
+        transition-colors duration-150
+        ${leadingPadding} ${trailingPadding} ${borderColor}
+      `;
+  }
+
   return (
     <div className="flex flex-col gap-1">
       {label && (
@@ -15,19 +58,21 @@ export const Input: React.FC<InputProps> = ({ label, error, helpText, id, classN
           {props.required && <span className="text-red-500 ml-1">*</span>}
         </label>
       )}
-      <input
-        id={id}
-        {...props}
-        className={`
-          block w-full rounded-lg border px-3 py-2 text-sm text-gray-900 shadow-sm
-          placeholder:text-gray-400
-          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
-          disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed
-          transition-colors duration-150
-          ${error ? 'border-red-400 bg-red-50' : 'border-gray-300 bg-white'}
-          ${className}
-        `}
-      />
+      <div className="relative">
+        {icon && (
+          <span
+            className={`pointer-events-none absolute inset-y-0 left-0 flex items-center text-gray-400 ${variant === 'underline' ? '' : 'pl-3'}`}
+          >
+            {icon}
+          </span>
+        )}
+        <input id={id} {...props} className={`${fieldClassName} ${className}`} />
+        {trailingIcon && (
+          <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-500">
+            {trailingIcon}
+          </span>
+        )}
+      </div>
       {error && <p className="text-xs text-red-600 mt-0.5">{error}</p>}
       {helpText && !error && <p className="text-xs text-gray-500 mt-0.5">{helpText}</p>}
     </div>
