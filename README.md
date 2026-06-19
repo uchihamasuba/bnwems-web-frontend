@@ -52,13 +52,13 @@ web-frontend/
 │
 │   ├── app/
 │   │
-│   │   ├── (auth)/
+│   │   ├── auth/
 │   │   │   ├── login/
 │   │   │   │   └── page.tsx
 │   │   │   └── forgot-password/
 │   │   │       └── page.tsx
 │   │
-│   │   ├── (admin)/
+│   │   ├── admin/
 │   │   │
 │   │   │   ├── dashboard/
 │   │   │   │   └── page.tsx
@@ -112,11 +112,10 @@ web-frontend/
 │   │   │       ├── roles/
 │   │   │       └── system/
 │   │
-│   │   └── (manager)/
+│   │   └── manager/
 │   │       │
 │   │       ├── dashboard/
 │   │       ├── orders/
-│   │       ├── customers/
 │   │       ├── inventory/
 │   │       ├── procurement/
 │   │       ├── schedule/
@@ -208,7 +207,7 @@ web-frontend/
 │   │   ├── formatDate.ts
 │   │   └── exportExcel.ts
 │   │
-│   └── middleware.ts
+│   └── proxy.ts
 │
 ├── __tests__/
 │   ├── components/
