@@ -58,52 +58,28 @@ web-frontend/
 │   │   │   └── forgot-password/
 │   │   │       └── page.tsx
 │   │
-│   │   ├── admin/
+│   │   ├── admin/                  # Chỉ master data + audit + settings (KHÔNG xử lý vận hành)
 │   │   │
-│   │   │   ├── dashboard/
+│   │   │   ├── dashboard/          # Administrative Dashboard
 │   │   │   │   └── page.tsx
 │   │   │
-│   │   │   ├── orders_audit/
-│   │   │   │   ├── page.tsx
-│   │   │   │   ├── create/
-│   │   │   │   └── [id]/
+│   │   │   ├── catalog/            # Danh mục thiết bị + dịch vụ + giá
+│   │   │   │   └── page.tsx
 │   │   │
-│   │   │   ├── customers/
-│   │   │   │   ├── page.tsx
-│   │   │   │   └── [id]/
-│   │   │
-│   │   │   ├── inventory/
-│   │   │   │   ├── equipments/
+│   │   │   ├── inventory/          # Xem (read-only) — không có create/update
 │   │   │   │   ├── stock-status/
 │   │   │   │   └── maintenance/
 │   │   │
-│   │   │   ├── suppliers/
+│   │   │   ├── policies/           # Chính sách cọc/hủy/đền bù/phụ phí/lương
+│   │   │   │   └── page.tsx
+│   │   │
+│   │   │   ├── orders_audit/       # Audit đơn hàng — chỉ xem, KHÔNG tạo/sửa
 │   │   │   │   ├── page.tsx
 │   │   │   │   └── [id]/
 │   │   │
-│   │   │   ├── procurement/
-│   │   │   │   ├── page.tsx
-│   │   │   │   └── requests/
-│   │   │
-│   │   │   ├── staff/
-│   │   │   │   ├── page.tsx
-│   │   │   │   └── assignments/
-│   │   │
-│   │   │   ├── schedule/
-│   │   │   │   ├── calendar/
-│   │   │   │   └── page.tsx
-│   │   │
-│   │   │   ├── payments/
-│   │   │   │   ├── deposits/
-│   │   │   │   ├── settlements/
-│   │   │   │   └── transactions/
-│   │   │
-│   │   │   ├── debts/
-│   │   │   │   ├── suppliers/
-│   │   │   │   └── staff/
-│   │   │
-│   │   │   ├── reports/
+│   │   │   ├── reports/            # Báo cáo & audit (Admin-only)
 │   │   │   │   ├── revenue/
+│   │   │   │   ├── orders/
 │   │   │   │   ├── inventory/
 │   │   │   │   └── debts/
 │   │   │
@@ -112,14 +88,37 @@ web-frontend/
 │   │   │       ├── roles/
 │   │   │       └── system/
 │   │
-│   │   └── manager/
+│   │   └── manager/                # Toàn bộ vận hành (vòng đời Order)
 │   │       │
-│   │       ├── dashboard/
+│   │       ├── dashboard/          # Operational Dashboard
+│   │       ├── customers/
+│   │       │   └── [id]/
+│   │       ├── quotations/
+│   │       │   └── [id]/
 │   │       ├── orders/
-│   │       ├── inventory/
-│   │       ├── procurement/
+│   │       │   ├── create/
+│   │       │   └── [id]/
+│   │       ├── survey/             # Khảo sát + theo dõi tiến độ
 │   │       ├── schedule/
-│   │       └── reports/
+│   │       │   ├── plans/          # Schedule Plan (kế hoạch tổng thể)
+│   │       │   └── tasks/          # Work Task (giao việc từng staff)
+│   │       ├── inventory/
+│   │       │   ├── pick-lists/     # Generate Pick List
+│   │       │   └── returns/        # Confirm Check-out/Return
+│   │       ├── suppliers/
+│   │       │   ├── [id]/
+│   │       │   └── debts/
+│   │       ├── procurement/        # Supplier Rental/Purchase Order
+│   │       │   └── confirmations/  # Confirm nhận/trả hàng Supplier
+│   │       ├── field-ops/          # Hàng đợi xác nhận dữ liệu Leader Staff ghi từ mobile
+│   │       │   ├── change-requests/
+│   │       │   ├── handovers/
+│   │       │   └── damage-loss/
+│   │       ├── payments/
+│   │       │   ├── deposits/
+│   │       │   ├── settlements/
+│   │       │   └── transactions/
+│   │       └── wages/              # Confirm Staff Work and Wage
 │   │
 │   │
 │   ├── components/
@@ -155,13 +154,16 @@ web-frontend/
 │   │   │   └── ProcurementRequestForm.tsx
 │   │
 │   │   ├── schedule/
-│   │   │   ├── CalendarView.tsx
-│   │   │   └── AssignmentModal.tsx
+│   │   │   ├── CalendarView.tsx      # Schedule Plan
+│   │   │   └── AssignmentModal.tsx   # Work Task
 │   │
 │   │   └── reports/
 │   │       ├── RevenueChart.tsx
 │   │       ├── DebtChart.tsx
 │   │       └── DashboardStats.tsx
+│   │
+│   │   (Component cho các module mới — catalog/policies/quotations/survey/field-ops/payments/wages —
+│   │    sẽ bổ sung theo cùng pattern trên khi triển khai logic thật cho từng màn hình.)
 │   │
 │   │
 │   ├── services/
@@ -170,12 +172,22 @@ web-frontend/
 │   │   ├── auth.service.ts
 │   │   ├── order.service.ts
 │   │   ├── customer.service.ts
+│   │   ├── quotation.service.ts
+│   │   ├── catalog.service.ts
+│   │   ├── policy.service.ts
+│   │   ├── survey.service.ts
+│   │   ├── schedulePlan.service.ts
+│   │   ├── workTask.service.ts
 │   │   ├── inventory.service.ts
 │   │   ├── supplier.service.ts
 │   │   ├── procurement.service.ts
+│   │   ├── fieldOps.service.ts
 │   │   ├── payment.service.ts
 │   │   ├── staff.service.ts
+│   │   ├── wage.service.ts
 │   │   ├── debt.service.ts
+│   │   ├── notification.service.ts
+│   │   ├── user.service.ts
 │   │   └── report.service.ts
 │   │
 │   ├── context/
@@ -192,9 +204,18 @@ web-frontend/
 │   │   ├── auth.ts
 │   │   ├── order.ts
 │   │   ├── customer.ts
+│   │   ├── quotation.ts
+│   │   ├── catalog.ts
+│   │   ├── policy.ts
+│   │   ├── survey.ts
+│   │   ├── schedulePlan.ts
+│   │   ├── workTask.ts
 │   │   ├── inventory.ts
 │   │   ├── supplier.ts
+│   │   ├── fieldOps.ts
 │   │   ├── payment.ts
+│   │   ├── wage.ts
+│   │   ├── notification.ts
 │   │   └── report.ts
 │   │
 │   ├── constants/

@@ -15,20 +15,20 @@
 - Master data: dịch vụ, thiết bị (catalog), kho, Supplier, bảng giá, chính sách cọc/hoàn cọc/phí phát sinh, quy tắc tiền công
 - Khách hàng & vòng đời Order
 - Khảo sát hiện trường (Survey), Báo giá (Quotation, có versioning)
-- Thanh toán: cọc, thanh toán cuối (VNPay/chuyển khoản/tiền mặt)
+- Thanh toán: tạo yêu cầu cọc → sinh QR thanh toán qua VNPay hoặc khách trả tiền mặt/chuyển khoản (Leader Staff có thể ghi nhận chứng từ thanh toán tại hiện trường) → Manager xác nhận cọc/thanh toán cuối; settlement cuối cũng có thể được Leader Staff ghi nhận tại hiện trường trước khi Manager xác nhận.
 - Tồn kho theo ngày (Date-based Inventory Lock) — tính theo **loại + số lượng**, không theo serial/item riêng lẻ
 - Giao dịch Supplier (thuê/mua thiết bị, công nợ, đền bù thiếu/hỏng)
-- Điều phối nhân sự & phương tiện (Assignment, Pick-list xuất kho)
+- Điều phối nhân sự & phương tiện: **Schedule Plan** (kế hoạch tổng thể cho khảo sát/chuẩn bị/vận chuyển/thi công/thu hồi/hoàn kho) tách biệt với **Work Task** (giao việc cụ thể cho từng Staff); Pick-list xuất kho.
 - Vận hành hiện trường: vận chuyển, thi công, Change Request (thêm/bớt/đổi thiết bị), nghiệm thu/bàn giao, ghi nhận hỏng/mất
 - Settlement (quyết toán cuối) & đóng Order; hoàn kho & trả Supplier
 - Chấm công (Attendance) & tính tiền công Staff theo buổi
-- Audit log, Evidence file (ảnh minh chứng), Notification, Dashboard/báo cáo
+- Audit log, Evidence file (ảnh minh chứng), Notification; Dashboard/báo cáo: **Operational Dashboard** (Manager — trạng thái order/task/thanh toán/kho/vấn đề vận hành) tách biệt với **Administrative Dashboard + Revenue/Order/Inventory Reports** (Admin — audit-oriented).
 
 ### Vai trò & phân quyền
 Hệ thống có 4 role; **web frontend (repo này) chỉ phục vụ Admin và Manager** — Leader Staff và Technical Staff dùng app mobile riêng, không thuộc phạm vi repo này nhưng vẫn cần hiểu để dữ liệu hiển thị đúng (vd: tiến độ task do Leader/Technical Staff thực hiện).
 
 - **Admin** (Web only): quyền cao nhất nhưng **không xử lý vận hành hằng ngày**. Chỉ quản lý master data, cấu hình hệ thống/chính sách, phân quyền, xem & audit toàn bộ dữ liệu sau vận hành. Admin **không** trực tiếp ghi nhận cọc/thanh toán, phê duyệt change request, xác nhận hoàn kho hay đóng order — ranh giới này phải tôn trọng khi thiết kế UI/permission gating.
-- **Manager** (Web + Mobile): vai trò vận hành chính, chịu trách nhiệm toàn bộ vòng đời Order — tạo order, khảo sát, báo giá, ghi nhận cọc/thanh toán, phân công nhân sự, làm việc với Supplier, phê duyệt Change Request, xác nhận biên bản/hỏng-mất/settlement/hoàn kho, đóng order, xử lý tranh chấp.
+- **Manager** (Web + Mobile): vai trò vận hành chính, chịu trách nhiệm toàn bộ vòng đời Order — tạo order, khảo sát, báo giá, ghi nhận cọc/thanh toán, phân công nhân sự, làm việc với Supplier, phê duyệt Change Request, xác nhận biên bản/hỏng-mất/settlement/hoàn kho, đóng order, xử lý tranh chấp. Phần lớn dữ liệu hiện trường (khảo sát, xuất/nhận/trả kho nội bộ và Supplier, biên bản bàn giao, hỏng/mất, settlement, chứng từ thanh toán tại hiện trường) do **Leader Staff (mobile) ghi nhận trước, Manager chỉ xác nhận (confirm) trên web** — khi thiết kế UI Manager cần có hàng đợi/badge "chờ xác nhận" theo từng loại biên bản.
 - *(Ngoài phạm vi web)* Leader Staff (Mobile, điều phối hiện trường) và Technical Staff (Mobile, chỉ thực hiện task được giao).
 - **Customer và Supplier không có tài khoản đăng nhập** — chỉ là dữ liệu được quản lý; giao tiếp với họ diễn ra ngoài hệ thống (gọi điện, Zalo, Messenger), hệ thống không có cổng khách hàng hay chữ ký điện tử.
 
@@ -45,8 +45,9 @@ Tên trạng thái Order đã chuẩn hóa trong doc gốc (dùng làm enum khi 
 - **Thêm thiết bị tại hiện trường**: chỉ kiểm tra kho nội bộ (không liên hệ Supplier ở giai đoạn thi công); phụ phí vận chuyển nếu khoảng cách kho → địa điểm > 2km.
 - **Đền bù thiết bị hỏng/mất**: `Số tiền = Giá mua thiết bị × Số lượng hỏng/mất` (tính theo giá mua, không theo giá thuê/bán).
 - **Đền bù Supplier** (đồ thuê ngoài thiếu/hỏng): theo đơn giá mua của Supplier.
-- **Tiền công Staff**: tính theo **buổi** (không theo giờ, không phụ cấp ngoài giờ); Leader Staff > Technical Staff; tổng hợp & trả cuối tháng; khấu trừ do hỏng/mất trừ trực tiếp vào lương tháng đó.
+- **Tiền công Staff**: tính theo **buổi** (không theo giờ, không phụ cấp ngoài giờ); Leader Staff > Technical Staff; tổng hợp & trả cuối tháng; khấu trừ do hỏng/mất trừ trực tiếp vào lương tháng đó. **Chấm công xác nhận qua 2 lớp trước khi tính lương**: Technical Staff tự check-in → Leader Staff xác nhận điểm danh & hoàn thành việc của Technical Staff trong nhóm mình phụ trách → Manager xác nhận tổng hợp công/lương cuối cùng.
 - Mọi biên bản (bàn giao, hỏng/mất, settlement) đều cần **Manager xác nhận trên hệ thống** trước khi gửi Customer qua kênh ngoài hệ thống — không có bước tự động hóa hay chữ ký điện tử.
+- **Xóa draft**: Quotation và Supplier Rental/Purchase Order chỉ được xóa khi còn ở trạng thái draft (chưa confirm, chưa gắn Order/Supplier debt active); sau khi confirm/liên kết dữ liệu thì không xóa được nữa, chỉ cập nhật hoặc đổi trạng thái. ⚠️ `docs/api/08-quotations.md` và `docs/api/04-suppliers.md` hiện **chưa có endpoint DELETE** tương ứng — cần đồng bộ lại doc API/backend trước khi build chức năng xóa trên UI.
 
 ### Giới hạn / Out of scope đáng chú ý
 Không có Customer/Supplier self-service portal; không chữ ký điện tử; không tự động đối soát ngân hàng; không AI khảo sát/thiết kế tự động; không tối ưu lịch/tuyến tự động; không RFID/IoT; không phải hệ thống kế toán/payroll đầy đủ; không BI/dự báo nâng cao. Mọi cột mốc quan trọng cần xác nhận thủ công bởi Manager (không tự động hóa).

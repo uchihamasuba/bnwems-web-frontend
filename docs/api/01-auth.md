@@ -10,6 +10,8 @@
 | UC-1 | Đăng nhập | `POST /auth/login` | Tất cả | ✅ |
 | UC-2 | Đăng xuất | `POST /auth/logout` | Tất cả (đã đăng nhập) | ✅ |
 | UC-3 | Quên mật khẩu | `POST /auth/forgot-password` | Tất cả | ✅ |
+| UC-3 | Xác minh OTP | `POST /auth/forgot-password/verify` | Tất cả | ✅ |
+| UC-3 | Đặt lại mật khẩu | `POST /auth/reset-password` | Tất cả | ✅ |
 | UC-4 | Đổi mật khẩu | `PUT /me/password` | Tất cả (đã đăng nhập) | ✅ |
 | UC-5 | Xem hồ sơ cá nhân | `GET /me` | Tất cả (đã đăng nhập) | ✅ |
 | UC-6 | Cập nhật hồ sơ cá nhân | `PUT /me` | Tất cả (đã đăng nhập) | ✅ |
@@ -99,15 +101,15 @@
 
 ---
 
-### `[UC-3]` Quên mật khẩu
+### `[UC-3]` Quên mật khẩu (Bước 1 — Yêu cầu khôi phục)
 
 `POST /auth/forgot-password`
 
 | | |
 |---|---|
 | **Vai trò** | Tất cả (không cần token) |
-| **UC · BR** | UC-3 · BR-FP01–05 |
-| **Mô tả** | Gửi yêu cầu khôi phục mật khẩu. **Theo BR-FP, việc reset do Admin thực hiện sau khi xác minh ngoài hệ thống** (UC-12) — endpoint này chỉ ghi nhận yêu cầu và thông báo Admin, **không tự đặt lại mật khẩu**. |
+| **UC · BR** | UC-3 · BR-AUTH01, BR-AUTH04 |
+| **Mô tả** | Người dùng nhập username/email. Hệ thống tạo OTP/token có hạn (vd 10 phút), gửi qua email/SMS đã đăng ký. |
 
 **Request body**
 
@@ -117,12 +119,100 @@
 
 **Response `200`**
 
+*(luôn trả về cùng message dù tài khoản có tồn tại hay không, để tránh user enumeration attack)*
+
 ```json
-{ "success": true, "code": "MSG-FP-01", "message": "Yêu cầu đã được ghi nhận, vui lòng liên hệ quản trị viên", "data": null }
+{
+  "success": true,
+  "code": "MSG-AUTH0301-OK",
+  "message": "Nếu tài khoản tồn tại, mã xác nhận đã được gửi",
+  "data": null
+}
 ```
 
-> ⚠️ **Cần xác nhận:** Đồ án có làm self-service reset (gửi mail/OTP) không, hay giữ đúng BR-FP (Admin reset thủ công)? Mẫu này đang theo BR-FP.
-**Ghi chú:** Endpoint luôn trả về `200` với cùng message bất kể username có tồn tại hay không để tránh user enumeration attack.
+**Ghi chú:**
+- Yêu cầu áp dụng **Rate limiting** để chống spam.
+- Ghi audit log.
+
+---
+
+### `[UC-3]` Quên mật khẩu (Bước 2 — Xác minh OTP)
+
+`POST /auth/forgot-password/verify`
+
+| | |
+|---|---|
+| **Vai trò** | Tất cả (không cần token) |
+| **UC · BR** | UC-3 · BR-AUTH02, BR-AUTH04 |
+| **Mô tả** | Người dùng nhập OTP/token nhận được. Hệ thống xác minh, nếu đúng → cấp reset_token ngắn hạn. |
+
+**Request body**
+
+```json
+{ "username": "manager01", "otp": "839204" }
+```
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "data": { "reset_token": "rst_8f2c1a...", "expires_in": 300 }
+}
+```
+
+**Lỗi có thể gặp**
+
+| HTTP | Khi nào |
+|------|---------|
+| 400 | OTP sai hoặc hết hạn |
+| 429 | Thử quá số lần cho phép (chống brute-force) |
+
+**Ghi chú:**
+- Yêu cầu áp dụng **Rate limiting** để chống brute-force OTP.
+- Ghi audit log.
+
+---
+
+### `[UC-3]` Đặt lại mật khẩu (Bước 3 — Hoàn tất)
+
+`POST /auth/reset-password`
+
+| | |
+|---|---|
+| **Vai trò** | Tất cả (không cần token) |
+| **UC · BR** | UC-3 · BR-AUTH02, BR-AUTH03, BR-AUTH04 |
+| **Mô tả** | Người dùng gửi reset_token + new_password. Hệ thống xác thực token, đặt mật khẩu mới, vô hiệu hóa token. |
+
+**Request body**
+
+```json
+{ "reset_token": "rst_8f2c1a...", "new_password": "newSecret456" }
+```
+
+**Response `200`**
+
+```json
+{
+  "success": true,
+  "code": "MSG-AUTH0303",
+  "message": "Đặt lại mật khẩu thành công",
+  "data": null
+}
+```
+
+**Lỗi có thể gặp**
+
+| HTTP | code | Khi nào |
+|------|------|---------|
+| 400 | MSG-AUTH0301 | Thiếu field bắt buộc |
+| 400/409 | MSG-AUTH0302 | `reset_token` không hợp lệ / hết hạn / đã sử dụng, hoặc mật khẩu mới không đạt chính sách |
+
+**Ghi chú:**
+- Sau khi reset thành công, vô hiệu hóa toàn bộ token đăng nhập hiện có của user.
+- Ghi audit log (đặc biệt: ai, lúc nào, từ IP nào).
+- `reset_token` phải bị hủy ngay sau khi dùng thành công hoặc hết hạn, lưu ở bảng riêng (vd `password_reset_tokens`).
+- Gửi email/OTP có thể cần làm rõ thêm phương thức liên lạc.
 
 ---
 

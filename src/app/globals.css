@@ -12,12 +12,7 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* Hệ thống dùng nền sáng cố định cho vùng nội dung (CLAUDE.md mục 3) — không bật dark mode theo OS. */
 
 body {
   background: var(--background);
