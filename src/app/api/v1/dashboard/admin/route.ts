@@ -1,11 +1,12 @@
 import { mockSuccess } from '@/lib/mock-response';
+import { mockOrders } from '@/mocks/seed';
 
-// Số liệu giả định cho UC26 (Administrative Dashboard) — docs/api chưa chốt field cho endpoint này.
+// UC 2.8 — GET /api/v1/dashboard/admin (docs/api/13-reports.md)
 export async function GET() {
   return mockSuccess({
-    total_orders: 53,
-    total_revenue: 1850000000,
-    pending_audit_count: 4,
-    low_stock_alerts: 2,
+    activeOrders: mockOrders.filter((o) => o.status === 'CONFIRMED' || o.status === 'IN_PROGRESS').length,
+    totalRevenueMonth: 25000000,
+    unpaidSupplierDebt: 2000000,
+    recentOrders: mockOrders.slice(0, 5).map((o) => ({ orderId: o.id, status: o.status })),
   });
 }

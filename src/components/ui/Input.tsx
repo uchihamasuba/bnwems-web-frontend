@@ -6,6 +6,7 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   helpText?: string;
   icon?: React.ReactNode;
   trailingIcon?: React.ReactNode;
+  onTrailingIconClick?: () => void;
   variant?: 'bordered' | 'underline';
 }
 
@@ -15,6 +16,7 @@ export const Input: React.FC<InputProps> = ({
   helpText,
   icon,
   trailingIcon,
+  onTrailingIconClick,
   variant = 'bordered',
   id,
   className = '',
@@ -26,7 +28,7 @@ export const Input: React.FC<InputProps> = ({
   if (icon) leadingPadding = isUnderline ? 'pl-7' : 'pl-10';
 
   let trailingPadding = '';
-  if (isUnderline && trailingIcon) trailingPadding = 'pr-7';
+  if (trailingIcon) trailingPadding = isUnderline ? 'pr-7' : 'pr-10';
 
   let borderColor = isUnderline ? 'border-gray-200' : 'border-gray-300 bg-white';
   if (error) borderColor = isUnderline ? 'border-red-400' : 'border-red-400 bg-red-50';
@@ -37,7 +39,7 @@ export const Input: React.FC<InputProps> = ({
         focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
         disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed
         transition-colors duration-150
-        ${leadingPadding} ${borderColor}
+        ${leadingPadding} ${trailingPadding} ${borderColor}
       `;
   if (isUnderline) {
     fieldClassName = `
@@ -67,8 +69,17 @@ export const Input: React.FC<InputProps> = ({
           </span>
         )}
         <input id={id} {...props} className={`${fieldClassName} ${className}`} />
-        {trailingIcon && (
-          <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-500">
+        {trailingIcon && onTrailingIconClick && (
+          <button
+            type="button"
+            onClick={onTrailingIconClick}
+            className={`absolute inset-y-0 right-0 flex items-center text-gray-400 hover:text-gray-600 ${isUnderline ? '' : 'pr-3'}`}
+          >
+            {trailingIcon}
+          </button>
+        )}
+        {trailingIcon && !onTrailingIconClick && (
+          <span className={`pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-500 ${isUnderline ? '' : 'pr-3'}`}>
             {trailingIcon}
           </span>
         )}

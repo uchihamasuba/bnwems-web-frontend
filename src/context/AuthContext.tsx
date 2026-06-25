@@ -3,11 +3,11 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 export interface AuthUser {
-  id: number;
+  id: string;
   username: string;
-  full_name: string;
-  role: string;
-  platform_access: string;
+  fullName: string;
+  role: 'ADMIN' | 'MANAGER' | 'LEADER_STAFF' | 'TECHNICAL_STAFF';
+  status: 'ACTIVE' | 'INACTIVE' | 'LOCKED';
 }
 
 interface AuthContextValue {
@@ -31,6 +31,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const storedToken = localStorage.getItem('bnwems_token');
       const storedUser = localStorage.getItem('bnwems_user');
       if (storedToken && storedUser) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time session hydration from localStorage on mount, not a render loop
         setToken(storedToken);
         setUser(JSON.parse(storedUser));
       }

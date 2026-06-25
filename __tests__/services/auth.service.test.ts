@@ -1,9 +1,8 @@
 /**
  * @file auth.service.test.ts
- * Unit tests for the Auth API Service wrapper.
+ * Unit tests for the Auth API Service wrapper (docs/api/01-auth.md).
  */
 
-// Mock axios entirely
 jest.mock('axios', () => {
   const mockAxios = {
     create: jest.fn().mockReturnThis(),
@@ -46,8 +45,7 @@ describe('authApiService — login()', () => {
     const mockResponse = {
       data: {
         success: true,
-        statusCode: 200,
-        data: { token: 'mock.token', user: { id: 1, username: 'manager_test' } },
+        data: { token: 'mock.token', expiresIn: 86400, user: { id: 'usr-1', username: 'manager_test' } },
       },
     };
     (mockApi.post as jest.Mock).mockResolvedValue(mockResponse);
@@ -70,58 +68,50 @@ describe('authApiService — login()', () => {
 describe('authApiService — changePassword()', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('should call PUT /me/password with correct payload', async () => {
-    const mockResponse = { data: { success: true, statusCode: 200, message: 'Thay đổi mật khẩu thành công.' } };
+  it('should call PUT /auth/change-password with correct payload', async () => {
+    const mockResponse = { data: { success: true, message: 'Password changed successfully.' } };
     (mockApi.put as jest.Mock).mockResolvedValue(mockResponse);
 
     const result = await authApiService.changePassword({
-      current_password: 'P@ssword2026',
-      new_password: 'NewP@ss2026!',
+      oldPassword: 'P@ssword2026',
+      newPassword: 'NewP@ss2026!',
+      confirmNewPassword: 'NewP@ss2026!',
     });
 
-    expect(mockApi.put).toHaveBeenCalledWith('/me/password', {
-      current_password: 'P@ssword2026',
-      new_password: 'NewP@ss2026!',
+    expect(mockApi.put).toHaveBeenCalledWith('/auth/change-password', {
+      oldPassword: 'P@ssword2026',
+      newPassword: 'NewP@ss2026!',
+      confirmNewPassword: 'NewP@ss2026!',
     });
     expect(result.success).toBe(true);
   });
 });
 
-describe('authApiService — forgot password flow', () => {
+describe('authApiService — forgotPassword()', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('should call POST /auth/forgot-password with username', async () => {
-    const mockResponse = { data: { success: true, message: 'Nếu tài khoản tồn tại, mã xác nhận đã được gửi' } };
+    const mockResponse = { data: { success: true, message: 'If the account exists, a recovery email has been sent.' } };
     (mockApi.post as jest.Mock).mockResolvedValue(mockResponse);
 
     await authApiService.forgotPassword({ username: 'manager01' });
 
     expect(mockApi.post).toHaveBeenCalledWith('/auth/forgot-password', { username: 'manager01' });
   });
+});
 
-  it('should call POST /auth/forgot-password/verify with username and otp', async () => {
-    const mockResponse = { data: { success: true, data: { reset_token: 'rst_8f2c1a', expires_in: 300 } } };
-    (mockApi.post as jest.Mock).mockResolvedValue(mockResponse);
+describe('authApiService — getProfile()', () => {
+  beforeEach(() => jest.clearAllMocks());
 
-    const result = await authApiService.verifyOtp({ username: 'manager01', otp: '839204' });
+  it('should call GET /auth/profile', async () => {
+    const mockResponse = {
+      data: { success: true, data: { id: 'usr-1', username: 'manager01', fullName: 'Manager One', role: 'MANAGER', status: 'ACTIVE' } },
+    };
+    (mockApi.get as jest.Mock).mockResolvedValue(mockResponse);
 
-    expect(mockApi.post).toHaveBeenCalledWith('/auth/forgot-password/verify', {
-      username: 'manager01',
-      otp: '839204',
-    });
-    expect(result.data.reset_token).toBe('rst_8f2c1a');
-  });
+    const result = await authApiService.getProfile();
 
-  it('should call POST /auth/reset-password with reset_token and new_password', async () => {
-    const mockResponse = { data: { success: true, message: 'Đặt lại mật khẩu thành công' } };
-    (mockApi.post as jest.Mock).mockResolvedValue(mockResponse);
-
-    const result = await authApiService.resetPassword({ reset_token: 'rst_8f2c1a', new_password: 'NewP@ss2026!' });
-
-    expect(mockApi.post).toHaveBeenCalledWith('/auth/reset-password', {
-      reset_token: 'rst_8f2c1a',
-      new_password: 'NewP@ss2026!',
-    });
-    expect(result.success).toBe(true);
+    expect(mockApi.get).toHaveBeenCalledWith('/auth/profile');
+    expect(result.data.username).toBe('manager01');
   });
 });

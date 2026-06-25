@@ -39,6 +39,9 @@ export const getStatusBadgeVariant = (status: string): BadgeVariant => {
     INACTIVE: 'neutral',
     DEACTIVATED: 'error',
     CANCELLED: 'error',
+    SUSPENDED: 'warning',
+    LOCKED: 'warning',
+    MAINTENANCE: 'warning',
   };
   return mapping[status] || 'neutral';
 };

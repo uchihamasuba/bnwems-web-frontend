@@ -29,7 +29,7 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      const response = await authApiService.login({ username, password, device_type: 'web' });
+      const response = await authApiService.login({ username, password });
       const { token, user: loggedInUser } = response.data;
       const dashboardPath = ROLE_DASHBOARD_PATH[loggedInUser.role];
 

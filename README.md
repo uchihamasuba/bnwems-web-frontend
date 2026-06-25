@@ -63,12 +63,19 @@ web-frontend/
 │   │   │   ├── dashboard/          # Administrative Dashboard
 │   │   │   │   └── page.tsx
 │   │   │
-│   │   │   ├── catalog/            # Danh mục thiết bị + dịch vụ + giá
-│   │   │   │   └── page.tsx
+│   │   │   ├── catalog/            # Danh mục thiết bị/dịch vụ — phân loại bằng itemType, có
+│   │   │   │   ├── page.tsx        # thể gắn thêm CatalogCategory (tùy chọn) qua categoryId
+│   │   │   │   └── categories/     # Category Management (docs/api/03-catalog.md)
+│   │   │   │       ├── page.tsx
+│   │   │   │       └── [id]/
 │   │   │
 │   │   │   ├── inventory/          # Xem (read-only) — không có create/update
 │   │   │   │   ├── stock-status/
 │   │   │   │   └── maintenance/
+│   │   │
+│   │   │   ├── warehouse/          # View Warehouse Information (UC-ID-21) — chỉ xem, không tạo/sửa kho
+│   │   │   │   ├── page.tsx
+│   │   │   │   └── [id]/           # Chi tiết kho + tồn kho thiết bị (GET /warehouses, GET /inventory)
 │   │   │
 │   │   │   ├── policies/           # Chính sách cọc/hủy/đền bù/phụ phí/lương
 │   │   │   │   └── page.tsx
@@ -129,6 +136,7 @@ web-frontend/
 │   │   │   ├── Select.tsx
 │   │   │   ├── Modal.tsx
 │   │   │   ├── Badge.tsx
+│   │   │   ├── Avatar.tsx
 │   │   │   ├── Table.tsx
 │   │   │   └── Pagination.tsx
 │   │
@@ -148,6 +156,11 @@ web-frontend/
 │   │   │   ├── EquipmentTable.tsx
 │   │   │   ├── StockWarning.tsx
 │   │   │   └── MaintenanceHistory.tsx
+│   │
+│   │   ├── catalog/
+│   │   │   ├── CatalogItemFormModal.tsx
+│   │   │   ├── CatalogItemDetailModal.tsx
+│   │   │   └── CategoryFormModal.tsx
 │   │
 │   │   ├── suppliers/
 │   │   │   ├── SupplierTable.tsx
@@ -206,6 +219,7 @@ web-frontend/
 │   │   ├── customer.ts
 │   │   ├── quotation.ts
 │   │   ├── catalog.ts
+│   │   ├── warehouse.ts
 │   │   ├── policy.ts
 │   │   ├── survey.ts
 │   │   ├── schedulePlan.ts

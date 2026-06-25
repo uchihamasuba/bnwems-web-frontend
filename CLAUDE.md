@@ -33,9 +33,9 @@ Hệ thống có 4 role; **web frontend (repo này) chỉ phục vụ Admin và 
 - **Customer và Supplier không có tài khoản đăng nhập** — chỉ là dữ liệu được quản lý; giao tiếp với họ diễn ra ngoài hệ thống (gọi điện, Zalo, Messenger), hệ thống không có cổng khách hàng hay chữ ký điện tử.
 
 ### Vòng đời Order (state machine quan trọng nhất)
-Request → Survey → (đặt thêm Supplier nếu thiếu kho) → Quotation cuối + yêu cầu cọc → xác nhận cọc + khóa inventory theo ngày (`INVENTORY_LOCKED`) → điều phối nhân sự/phương tiện → xuất kho & nhận hàng Supplier → vận chuyển → thi công + xử lý Change Request → nghiệm thu/bàn giao → thu hồi & kiểm đếm (hỏng/mất) → phụ phí + settlement cuối → hoàn kho + trả Supplier → Manager đóng order (`COMPLETED`) → Admin audit.
+Request → Survey → (đặt thêm Supplier nếu thiếu kho) → Quotation cuối + yêu cầu cọc → xác nhận cọc + khóa inventory theo ngày → điều phối nhân sự/phương tiện → xuất kho & nhận hàng Supplier → vận chuyển → thi công + xử lý Change Request → nghiệm thu/bàn giao → thu hồi & kiểm đếm (hỏng/mất) → phụ phí + settlement cuối → hoàn kho + trả Supplier → Manager đóng order → Admin audit. Đây là quy trình nghiệp vụ đầy đủ theo doc gốc — UI/luồng màn hình nên được thiết kế theo các bước này.
 
-Tên trạng thái Order đã chuẩn hóa trong doc gốc (dùng làm enum khi code, ví dụ): `REQUEST_SUBMITTED`, `SURVEY_*`, `SUPPLIER_REQUIRED/RECORDED`, `FINAL_QUOTATION_CREATED`, `WAITING_FOR_DEPOSIT`, `DEPOSIT_PAID`, `CONFIRMED`, `INVENTORY_LOCKED`, `DATE_CHANGE_*`, `CANCELLED`, `REFUND_*`, `ASSIGNED`, `PREPARING`, `CHECKED_OUT`, `IN_TRANSIT`, `ARRIVED_AT_SITE`, `EXECUTING`, `CHANGE_*`, `HANDOVER_*`, `EVENT_HAPPENING`, `COLLECTING`, `DAMAGE_REPORT_*`, `SETTLEMENT_*`, `FINAL_PAYMENT_*`, `PARTIALLY_PAID`, `SUPPLIER_ITEMS_RETURNED/DAMAGED_OR_LOST`, `PENDING_ORDER_CLOSURE`, `CLOSURE_*`, `COMPLETED`, `AUDIT_*`, `WAGE_*`, `SUPPLIER_DEBT_*`. Trạng thái Inventory: `Available`, `Reserved`, `Checked-out`, `In-use`, `Returned Pending Approval`, `Maintenance`, `Damaged`, `Lost`, `Removed from Available Inventory`.
+**Enum `OrderStatus` hiện tại trong code chỉ có 5 giá trị** (`src/types/order.ts`, khớp `docs/api/09-orders.md`): `DRAFT` → `QUOTED` → `CONFIRMED` → `IN_PROGRESS` → `COMPLETED`. Doc nghiệp vụ gốc có định nghĩa state machine chi tiết hơn nhiều (`REQUEST_SUBMITTED`, `SURVEY_*`, `INVENTORY_LOCKED`, `HANDOVER_*`, `SETTLEMENT_*`, `CLOSURE_*`...) nhưng **chưa được implement** — khi build các màn hình theo từng giai đoạn vận hành chi tiết (khảo sát, khóa kho, thu hồi, settlement...), cần mở rộng enum này và đồng bộ lại `docs/api/09-orders.md` trước, không tự thêm giá trị enum chỉ ở phía frontend. Trạng thái Inventory (chưa có type/constant riêng trong code, tham khảo doc gốc khi cần): `Available`, `Reserved`, `Checked-out`, `In-use`, `Returned Pending Approval`, `Maintenance`, `Damaged`, `Lost`, `Removed from Available Inventory`.
 
 ### Quy tắc nghiệp vụ cốt lõi (áp dụng đúng khi build tính năng/tính toán liên quan)
 - **Đổi ngày**: miễn phí nếu yêu cầu trước >3 ngày so với ngày lắp đặt.
@@ -47,7 +47,7 @@ Tên trạng thái Order đã chuẩn hóa trong doc gốc (dùng làm enum khi 
 - **Đền bù Supplier** (đồ thuê ngoài thiếu/hỏng): theo đơn giá mua của Supplier.
 - **Tiền công Staff**: tính theo **buổi** (không theo giờ, không phụ cấp ngoài giờ); Leader Staff > Technical Staff; tổng hợp & trả cuối tháng; khấu trừ do hỏng/mất trừ trực tiếp vào lương tháng đó. **Chấm công xác nhận qua 2 lớp trước khi tính lương**: Technical Staff tự check-in → Leader Staff xác nhận điểm danh & hoàn thành việc của Technical Staff trong nhóm mình phụ trách → Manager xác nhận tổng hợp công/lương cuối cùng.
 - Mọi biên bản (bàn giao, hỏng/mất, settlement) đều cần **Manager xác nhận trên hệ thống** trước khi gửi Customer qua kênh ngoài hệ thống — không có bước tự động hóa hay chữ ký điện tử.
-- **Xóa draft**: Quotation và Supplier Rental/Purchase Order chỉ được xóa khi còn ở trạng thái draft (chưa confirm, chưa gắn Order/Supplier debt active); sau khi confirm/liên kết dữ liệu thì không xóa được nữa, chỉ cập nhật hoặc đổi trạng thái. ⚠️ `docs/api/08-quotations.md` và `docs/api/04-suppliers.md` hiện **chưa có endpoint DELETE** tương ứng — cần đồng bộ lại doc API/backend trước khi build chức năng xóa trên UI.
+- **Xóa draft**: Quotation và Supplier Rental/Purchase Order chỉ được xóa khi còn ở trạng thái draft (chưa confirm, chưa gắn Order/Supplier debt active); sau khi confirm/liên kết dữ liệu thì không xóa được nữa, chỉ cập nhật hoặc đổi trạng thái. `docs/api/08-quotations.md` đã có `DELETE /api/v1/quotations/:id` (chỉ xóa được khi chưa `ACCEPTED`). `docs/api/04-suppliers.md` vẫn **chưa có endpoint DELETE** tương ứng cho Supplier Rental/Purchase Order — cần đồng bộ lại doc API/backend trước khi build chức năng xóa cho phần đó trên UI.
 
 ### Giới hạn / Out of scope đáng chú ý
 Không có Customer/Supplier self-service portal; không chữ ký điện tử; không tự động đối soát ngân hàng; không AI khảo sát/thiết kế tự động; không tối ưu lịch/tuyến tự động; không RFID/IoT; không phải hệ thống kế toán/payroll đầy đủ; không BI/dự báo nâng cao. Mọi cột mốc quan trọng cần xác nhận thủ công bởi Manager (không tự động hóa).
@@ -58,8 +58,9 @@ Backend dùng nhiều polymorphic relationship — `evidence_attachments (entity
 ## 2. Đây là dự án dùng Next.js
 
 - **Next.js 16 (App Router)** + **TypeScript** + **TailwindCSS v4** + **Axios** (JWT interceptor).
+- Icon: `lucide-react`. Chart: `recharts`. Test: Jest + Testing Library (+ Playwright cho E2E).
 - State: React Context (`AuthContext`, `PermissionContext`).
-- Cấu trúc thư mục chi tiết: xem [README.md](README.md).
+- Cấu trúc thư mục chi tiết: xem [README.md](README.md). ⚠️ README.md hiện mô tả route `admin/warehouse/` (View Warehouse Information) nhưng route này **không còn tồn tại** trong code — đã đổi thành `admin/inventory/` (`stock-status/`, `maintenance/`); cần sửa lại README khi đụng tới phần này.
 - ⚠️ Next.js 16 có breaking changes so với kiến thức huấn luyện — luôn đọc `node_modules/next/dist/docs/` trước khi dùng API mới (đã ghi rõ trong `AGENTS.md`, được import ở đầu file này — không xóa khối đó).
 - Phân khu theo vai trò bằng path segment thật (không phải route group): `auth/` (`/auth/...`), `admin/` (`/admin/...`), `manager/` (`/manager/...`). Không trộn UI/logic giữa hai role trừ khi dùng component dùng chung trong `components/`.
 
@@ -75,7 +76,7 @@ Mục lục module (file → nghiệp vụ):
 | [02-users-roles.md](docs/api/02-users-roles.md) | Người dùng, vai trò, quyền |
 | [03-catalog.md](docs/api/03-catalog.md) | Danh mục thiết bị/dịch vụ + giá |
 | [04-suppliers.md](docs/api/04-suppliers.md) | Nhà cung cấp + công nợ NCC |
-| [05-warehouse-inventory.md](docs/api/05-warehouse-inventory.md) | Kho + tồn kho + xuất/hoàn trả |
+| [05-warehouse-inventory.md](docs/api/05-warehouse-inventory.md) | Tồn kho theo ngày (UC 2.13) + xuất/hoàn trả kho (UC 2.23) — **không còn endpoint liệt kê kho** (`GET /warehouses` đã bị bỏ khỏi doc, web không còn cách tra tên/địa chỉ kho) |
 | [06-policies-wage.md](docs/api/06-policies-wage.md) | Chính sách + quy tắc lương |
 | [07-customers.md](docs/api/07-customers.md) | Khách hàng |
 | [08-quotations.md](docs/api/08-quotations.md) | Báo giá |
@@ -91,11 +92,12 @@ Quy ước chung áp dụng cho **mọi** endpoint (chi tiết: [docs/api/README
 - Auth: `POST /auth/login` trả 1 JWT (hạn ~7 ngày, **không có refresh token**); mọi request cần đăng nhập gắn `Authorization: Bearer <token>`. Logout = client tự xóa token. Thiếu quyền → `403`.
 - Envelope thành công: `{ success: true, code: "MSG-XX-NN", message, data }`.
 - Envelope lỗi: `{ success: false, code, message, errors?: [{ field, message }] }` (`errors` chỉ có khi lỗi validation theo field).
-- List/pagination: `data` là mảng + `meta: { page, limit, total, total_pages }`; query chuẩn `?page=&limit=&search=&sort_by=&sort_order=`.
-- HTTP status: `200` GET/PUT/PATCH OK · `201` POST tạo mới · `400` sai input · `401` chưa đăng nhập/token sai · `403` sai quyền · `404` không tìm thấy · `409` xung đột nghiệp vụ · `500` lỗi server.
-- **Không có method `DELETE`** — hệ thống không hard-delete, mọi vô hiệu hóa/xóa dùng `PATCH .../status` (soft delete).
+- List/pagination: `data` là mảng + `meta: { page, limit, totalCount }` (không còn `total`/`total_pages`); query chuẩn `?page=&limit=&search=&sort_by=&sort_order=`.
+- HTTP status: `200` GET/PUT OK · `201` POST tạo mới · `400` sai input · `401` chưa đăng nhập/token sai · `403` sai quyền · `404` không tìm thấy · `409` xung đột nghiệp vụ · `500` lỗi server.
+- Đa số vô hiệu hóa/đổi trạng thái dùng **`PUT .../status`** (không phải `PATCH`, vd `PUT /users/:id/status`, `PUT /catalog-items/:id/deactivate`) — hệ thống vẫn không hard-delete cho hầu hết entity. Ngoại lệ có `DELETE` thật: `08-quotations.md` → `DELETE /quotations/:id` (chỉ xóa được khi quotation chưa `ACCEPTED`); `10-survey-assignment.md` → `DELETE /tasks/:id` (UC 2.15.4, chỉ xóa được khi task đang `PENDING`) — kiểm tra doc module tương ứng trước khi giả định không có `DELETE`.
 - Ngày: `YYYY-MM-DD`; thời gian: ISO-8601 UTC; tiền: kiểu `number`, đơn vị VNĐ.
-- Mã `code` theo prefix module: `MSG-AU` Auth · `MSG-US` User/Role · `MSG-CT` Catalog · `MSG-SP` Supplier · `MSG-WH` Warehouse · `MSG-PO` Policy · `MSG-CU` Customer · `MSG-QO` Quotation · `MSG-CO` Order · `MSG-SV` Survey/Assignment · `MSG-PM` Payment/Settlement · `MSG-MO` Mobile · `MSG-RP` Report.
+- Mã `code` theo số use case SRS, dạng `MSG-UCnn-nn` (vd `MSG-UC01-03`, `MSG-UC04-01`, `MSG-UC10-04`) — không còn theo prefix module (`MSG-AU`/`MSG-US`/...); xem error code list ở đầu mỗi file `docs/api/*.md` để biết mã chính xác theo UC.
+- ⚠️ `docs/api/README.md` (mirror từ repo gốc) vẫn còn mô tả quy ước cũ (`total/total_pages`, `PATCH .../status`, không `DELETE`, mã prefix `MSG-XX`) — đây là phần upstream chưa đồng bộ lại README khi rewrite từng module; **ưu tiên nội dung trong từng file module cụ thể** (`01-auth.md`...`13-reports.md`) khi có mâu thuẫn với README.
 
 ## 3. Quy tắc thiết kế
 
@@ -138,10 +140,10 @@ Phong cách tham chiếu: dashboard quản trị tối giản, hiện đại, ch
 - Phân quyền theo vai trò (Admin/Manager) phải kiểm tra qua `PermissionContext`/`usePermission`, không hardcode điều kiện role rời rạc trong UI.
 - Định dạng tiền tệ và ngày giờ luôn qua `utils/formatCurrency.ts` và `utils/formatDate.ts`, không format thủ công.
 - Không thêm thư viện UI/CSS framework mới (ngoài Tailwind) nếu chưa thống nhất với người dùng.
-- Viết test cho service và hook quan trọng (đặt trong `__tests__/`) khi thêm logic nghiệp vụ mới.
+- Viết test cho service và hook quan trọng (đặt trong `__tests__/`) khi thêm logic nghiệp vụ mới. *(Hiện coverage còn thấp — phần lớn `services/*.service.ts` chưa có test; khi sửa/thêm logic ở service nào, ưu tiên bổ sung test cho service đó.)*
 - **Sau mỗi thay đổi UI lớn**: chụp screenshot màn hình vừa sửa và so sánh với ảnh design gốc (mục 3) trước khi báo là hoàn tất; nêu rõ điểm còn lệch nếu có.
 - **Website phải mobile-friendly**: mọi trang (không chỉ luồng check-in) đều phải responsive tốt trên mobile/tablet, không riêng desktop.
-- **Mọi section phải có animation khi scroll** (scroll-reveal khi section xuất hiện trong viewport): dùng thống nhất một thư viện animation cho toàn site (vd. Framer Motion), animation tinh tế/nhanh (không lặp lại quá đà), giữ đúng tinh thần tối giản ở mục 3 — tránh hiệu ứng nặng làm chậm trang hoặc gây rối mắt cho dashboard nhiều số liệu.
+- **Mọi section phải có animation khi scroll** (scroll-reveal khi section xuất hiện trong viewport): dùng thống nhất một thư viện animation cho toàn site (vd. Framer Motion), animation tinh tế/nhanh (không lặp lại quá đà), giữ đúng tinh thần tối giản ở mục 3 — tránh hiệu ứng nặng làm chậm trang hoặc gây rối mắt cho dashboard nhiều số liệu. ⚠️ **Hiện chưa có thư viện animation nào được cài** (`package.json` chưa có Framer Motion hay tương đương) và chưa trang nào có scroll-reveal — đây là việc còn thiếu, không phải đã làm; khi cần thêm, cài 1 thư viện duy nhất và dùng lại cho toàn site, không cài nhiều lib animation khác nhau.
 
 ## 5. Workflow
 

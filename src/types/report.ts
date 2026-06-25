@@ -1,12 +1,36 @@
-export interface Report {
-  id: number;
+// UC 2.7, 2.8 (docs/api/13-reports.md)
+
+// GET /api/v1/dashboard/admin
+export interface AdminDashboardStats {
+  activeOrders: number;
+  totalRevenueMonth: number;
+  unpaidSupplierDebt: number;
+  recentOrders: { orderId: string; status: string }[];
 }
 
-// Số liệu giả định cho UC26 (Administrative Dashboard) — docs/api chưa chốt field cho endpoint này,
-// chỉ có endpoint Operational Dashboard (UC39B, /dashboard/operations) cho Manager.
-export interface AdminDashboardStats {
-  total_orders: number;
-  total_revenue: number;
-  pending_audit_count: number;
-  low_stock_alerts: number;
+// GET /api/v1/dashboard/manager
+export interface ManagerDashboardStats {
+  ordersInProgress: number;
+  pendingChangeRequests: number;
+  tasksToday: number;
+  alerts: { type: string; taskId: string }[];
+}
+
+// GET /api/v1/reports/revenue
+export interface RevenueReportPoint {
+  month: string;
+  revenue: number;
+}
+
+export interface RevenueReport {
+  totalRevenue: number;
+  breakdownByMonth: RevenueReportPoint[];
+  topCustomers: { customerId: string; revenue: number }[];
+}
+
+// GET /api/v1/reports/inventory
+export interface InventoryReport {
+  totalDamaged: number;
+  totalLost: number;
+  mostUsedItems: { catalogItemId: string; itemName: string; usageCount: number }[];
 }

@@ -1,113 +1,172 @@
-# 06. Chính sách & Quy tắc lương — API
+# Master Data & Policies: Policy, Attendance, and Wage Management
 
-> **UC:** 34–38 · **Vai trò:** Admin · **Nền tảng:** Web
-> Quy ước chung & template: [README.md](./README.md)
-> Prefix MSG: đặt cọc **MSG-DP**, hủy đơn **MSG-CPOL**, phụ phí **MSG-AF**, quy tắc lương **MSG-WR** (mục 8). Bồi thường chưa có prefix → đề xuất **MSG-CMP**.
+## Overview
+This module handles **UC 2.6 (Policy Configuration)**, **UC 2.29 (Attendance & Task Completion)**, and **UC 2.17 (Staff Wage Confirmation)**.
+It manages `BusinessPolicy` records, staff `Attendance`, and their monthly `WageSummary`.
 
-> ⚠️ **Cần xác nhận (DB đơn giản hơn yêu cầu):** `documents.md` (Entity 11) mô tả Business Policy có `rules_json` (quy tắc phức tạp, vd hủy đơn nhiều mức theo ngưỡng ngày). Nhưng bảng `business_policies` trong `database.md` chỉ có **một giá trị phẳng** (`policy_value` + `unit`). → Chính sách nhiều mức (hủy đơn, phụ phí nhiều loại) **không lưu đủ** trong cấu trúc hiện tại. Mẫu dưới theo `database.md` (mỗi chính sách = 1 dòng key-value).
+## Standard Error Codes (SRS Mapping)
+- `MSG-UC06-01`: Required information is missing or invalid.
+- `MSG-UC06-02`: System cannot complete the request.
+- `MSG-UC29-01`: Location out of bounds for check-in.
+- `MSG-UC17-01`: Unresolved attendance issues prevent wage confirmation.
 
-## Danh sách endpoint
+## 1. Policy Configuration (UC 2.6)
 
-| UC | Tên | Method · Path | Vai trò | Trạng thái |
-|----|-----|---------------|---------|------------|
-| — | Xem danh sách chính sách | `GET /business-policies` | Admin | ✅ |
-| UC-34 | Cấu hình chính sách đặt cọc | `PUT /business-policies/{code}` | Admin | ✅ |
-| UC-35 | Cấu hình chính sách hủy đơn | `PUT /business-policies/{code}` | Admin | ✅ |
-| UC-36 | Cấu hình chính sách bồi thường | `PUT /business-policies/{code}` | Admin | ✅ |
-| UC-37 | Cấu hình chính sách phụ phí | `PUT /business-policies/{code}` | Admin | ✅ |
-| UC-38 | Xem/Cấu hình quy tắc lương | `GET/POST/PUT /wage-rules` | Admin | ✅ |
-
----
-
-## Chi tiết endpoint
-
-### `[—]` Xem danh sách chính sách
-
-`GET /business-policies`
-
-| | |
-|---|---|
-| **Vai trò** | Admin |
-| **Mô tả** | Toàn bộ chính sách nghiệp vụ hiện hành (`business_policies`). |
-
-**Response `200`**
-
+### `GET /api/v1/policies`
+- **Use Case:** UC 2.6 - View Policy List
+- **Description:** Retrieves the list of configured business policies. Admin access required.
+- **Query Parameters:**
+  - `policyType` (enum, optional) - DEPOSIT, REFUND, CANCELLATION, etc.
+  - `isActive` (boolean, optional)
+- **Response (200 OK):**
 ```json
 {
   "success": true,
   "data": [
-    { "code": "MIN_DEPOSIT", "name": "Tiền cọc tối thiểu", "policy_value": 30, "unit": "%" },
-    { "code": "CANCEL_REFUND_7D", "name": "Hoàn cọc khi hủy trước 7 ngày", "policy_value": 50, "unit": "%" }
-  ]
+    {
+      "id": "policy-uuid",
+      "policyType": "DEPOSIT",
+      "name": "Standard Deposit Policy",
+      "rules": { "percentage": 50 },
+      "isActive": true,
+      "createdAt": "2026-06-22T10:00:00Z"
+    }
+  ],
+  "meta": { "totalCount": 10 }
 }
 ```
 
----
-
-### `[UC-34/35/36/37]` Cấu hình chính sách
-
-`PUT /business-policies/{code}`
-
-| | |
-|---|---|
-| **Vai trò** | Admin |
-| **UC · BR** | UC-34 (BR-DP), UC-35 (BR-CPOL), UC-36 (bồi thường), UC-37 (BR-AF) |
-| **Mô tả** | Cập nhật giá trị một chính sách theo `code`. Một bản ghi = một giá trị (vd tỷ lệ cọc, % hoàn, mức phụ phí). |
-
-**Request body**
-
-```json
-{ "policy_value": 40.00, "unit": "%", "description": "Tăng tỷ lệ cọc tối thiểu lên 40%" }
-```
-*(Lưu ý: `policy_value` phải được truyền theo kiểu số thực (float/decimal), ví dụ: `40.00` thay vì `40` để nhất quán với Database `DECIMAL(15,2)`).*
-
-**Response `200`**
-
-```json
-{ "success": true, "code": "MSG-DP-01", "message": "Cập nhật chính sách thành công", "data": { "code": "MIN_DEPOSIT", "policy_value": 40.00, "unit": "%" } }
-```
-
-**Lỗi:** `400` — giá trị ngoài phạm vi cho phép (vd % hoàn không trong 0–100).
-
-> ⚠️ Chính sách nhiều mức (hủy đơn theo nhiều ngưỡng ngày, phụ phí nhiều loại) cần nhiều bản ghi `code` riêng, hoặc bổ sung `rules_json` vào DB.
-
----
-
-### `[UC-38]` Quy tắc lương nhân sự
-
-`GET /wage-rules` · `POST /wage-rules` · `PUT /wage-rules/{id}`
-
-| | |
-|---|---|
-| **Vai trò** | Admin |
-| **UC · BR** | UC-38 · BR-WR01–07 |
-| **Mô tả** | Cấu hình mức lương theo ca làm (`wage_rules`), theo vai trò + loại ca + ngày hiệu lực. Mức lương > 0; mỗi vai trò chỉ một quy tắc hiện hành tại một thời điểm. Manager xác nhận nhưng không cấu hình (xem UC-78). |
-
-**POST request body**
-
+### `POST /api/v1/policies`
+- **Use Case:** UC 2.6 - Create Policy
+- **Description:** Creates a new business policy. Admin access required.
+- **Business Rules:**
+  - BR-06-01: Rule constraints (e.g. percentages) must be between 0 and 100.
+  - BR-06-02: Log to `AuditLog`.
+- **Request Body:**
 ```json
 {
-  "role_id": 3,
-  "session_type": "night_setup",
-  "wage_amount": 500000,
-  "valid_from": "2026-07-01"
+  "policyType": "CANCELLATION",
+  "name": "7-Day Cancellation",
+  "rules": { "refundPercentage": 100, "daysBeforeEvent": 7 }
 }
 ```
-
-**Response `201`**
-
+- **Response (201 Created):**
 ```json
 {
   "success": true,
-  "code": "MSG-WR-01",
-  "message": "Tạo quy tắc lương thành công",
-  "data": { "id": 6, "role_id": 3, "session_type": "night_setup", "wage_amount": 500000, "valid_from": "2026-07-01", "valid_to": null }
+  "message": "Policy created successfully."
 }
 ```
 
-**Lỗi có thể gặp**
+### `PUT /api/v1/policies/:id`
+- **Use Case:** UC 2.6 - Update Policy
+- **Description:** Updates an existing policy. Admin access required.
+- **Business Rules:**
+  - BR-06-03: Active orders use the policy that was in effect at the time of order confirmation.
+- **Request Body:**
+```json
+{
+  "rules": { "refundPercentage": 80, "daysBeforeEvent": 7 }
+}
+```
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Policy updated successfully."
+}
+```
 
-| HTTP | code | Khi nào |
-|------|------|---------|
-| 400 | MSG-WR-02 | Mức lương ≤ 0 (BR-WR02) |
-| 409 | MSG-WR-03 | Đã có quy tắc hiện hành cho vai trò + ca này (BR-WR04) |
+## 2. Attendance & Task Completion (UC 2.29)
+
+### `POST /api/v1/attendance/check-in`
+- **Use Case:** UC 2.29 - Check-in Attendance
+- **Description:** Allows staff to check in for their assigned work session.
+- **Business Rules:**
+  - BR-29-01: System verifies that current time is within allowed schedule buffer.
+  - BR-29-02: Optional GPS location verification against task location.
+- **Request Body:**
+```json
+{
+  "assignmentId": "assignment-uuid",
+  "checkInTime": "2026-06-22T08:00:00Z",
+  "locationCoordinates": "10.762622, 106.660172"
+}
+```
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Check-in successful."
+}
+```
+
+### `PUT /api/v1/attendance/:id/confirm`
+- **Use Case:** UC 2.29 - Confirm Technical Staff Attendance & Work Completion
+- **Description:** Leader staff confirms the attendance and task completion of technical staff.
+- **Business Rules:**
+  - BR-29-03: Changes attendance status to `CONFIRMED` or `REJECTED`.
+- **Request Body:**
+```json
+{
+  "status": "CONFIRMED",
+  "checkOutTime": "2026-06-22T17:00:00Z"
+}
+```
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Attendance confirmed."
+}
+```
+
+## 3. Staff Wage Confirmation (UC 2.17)
+
+### `GET /api/v1/wages/summary`
+- **Use Case:** UC 2.17 - Monitor Staff Wage Data (implied)
+- **Description:** Retrieves wage summaries for staff by period. Manager access required.
+- **Query Parameters:**
+  - `period` (string, format YYYY-MM)
+  - `userId` (string, optional)
+  - `status` (enum, optional) - DRAFT, CONFIRMED, PAID
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "wage-uuid",
+      "userId": "user-uuid",
+      "wagePeriod": "2026-06",
+      "totalWage": 1500.00,
+      "deductions": 50.00,
+      "netWage": 1450.00,
+      "status": "DRAFT",
+      "updatedAt": "2026-06-22T10:00:00Z"
+    }
+  ],
+  "meta": { "page": 1, "limit": 20, "totalCount": 10 }
+}
+```
+
+### `POST /api/v1/wages/summary/:id/confirm`
+- **Use Case:** UC 2.17 - Confirm Staff Work and Wage
+- **Description:** Confirms the wage summary for a staff member after verifying attendance and deductions.
+- **Business Rules:**
+  - BR-17-01: Manager confirms the system-calculated `netWage`.
+  - BR-17-02: Wage cannot be confirmed if there are `PENDING` attendances for the period.
+- **Request Body:**
+```json
+{
+  "status": "CONFIRMED",
+  "notes": "Reviewed and approved."
+}
+```
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Wage summary confirmed."
+}
+```

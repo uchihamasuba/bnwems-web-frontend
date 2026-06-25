@@ -1,167 +1,100 @@
-# 07. Khách hàng — API
+# Sales & Customer Lifecycle: Customer Management
 
-> **UC:** 47–49 · **Vai trò:** Manager · **Nền tảng:** Web
-> Quy ước chung & template: [README.md](./README.md)
-> Mục 8 `documents.md` chưa có prefix MSG cho Khách hàng → đề xuất **MSG-CUS** (các mã dưới là đề xuất).
+## Overview
+This module handles **UC 2.9 (Customer Management)**.
+It deals with the registration, retrieval, and updating of `Customer` records. Customers themselves do not access the system; internal managers handle their profiles.
 
-## Danh sách endpoint
+## Standard Error Codes (SRS Mapping)
+- `MSG-UC09-01`: Required information is missing or invalid.
+- `MSG-UC09-02`: System cannot complete the request.
+- `MSG-UC09-03`: You do not have permission to perform this action.
+- `MSG-UC09-05`: Customer phone number already exists.
 
-| UC | Tên | Method · Path | Vai trò | Trạng thái |
-|----|-----|---------------|---------|------------|
-| UC-47 | Xem danh sách khách hàng | `GET /customers` | Manager | ✅ |
-| UC-47 | Xem chi tiết khách hàng | `GET /customers/{id}` | Manager | ✅ |
-| UC-48 | Đăng ký khách hàng mới | `POST /customers` | Manager | ✅ |
-| UC-49 | Cập nhật thông tin khách hàng | `PUT /customers/{id}` | Manager | ✅ |
+## Endpoints
 
-> ⚠️ **Cần xác nhận:** `documents.md` (Entity 5) có `dob` và `group` (VIP/Thân thiết/Khách mới), nhưng bảng `customers` trong `database.md` **không có** 2 trường này → tính năng nâng hạng khách hàng (câu hỏi mở #6) chưa có chỗ lưu. Mẫu dưới theo `database.md`.
-
----
-
-## Chi tiết endpoint
-
-### `[UC-47]` Xem danh sách khách hàng
-
-`GET /customers`
-
-| | |
-|---|---|
-| **Vai trò** | Manager |
-| **UC** | UC-47 |
-| **Mô tả** | Danh sách khách hàng, hỗ trợ tìm kiếm theo tên/SĐT và phân trang. |
-
-**Query params:** `?page=1&limit=20&search=&status=active`
-
-**Response `200`**
-
+### `GET /api/v1/customers`
+- **Use Case:** UC 2.9 - View Customer Information
+- **Description:** Retrieves a paginated list of customers. Manager access required.
+- **Query Parameters:**
+  - `page` (number, default 1)
+  - `limit` (number, default 20)
+  - `search` (string, optional) - searches `fullName`, `phone`, or `email`
+- **Response (200 OK):**
 ```json
 {
   "success": true,
   "data": [
     {
-      "id": 1,
-      "full_name": "Trần Thị B",
-      "phone": "0908765432",
-      "email": "b@example.com",
-      "address": "123 Lê Lợi, Q1",
-      "status": "active",
-      "updated_by": { "id": 5, "full_name": "Nguyễn Văn A" },
-      "created_at": "2026-02-01T08:00:00Z"
+      "id": "customer-uuid",
+      "fullName": "Jane Doe",
+      "phone": "+198765432",
+      "email": "jane@example.com",
+      "address": "123 Event Street",
+      "createdAt": "2026-06-22T10:00:00Z"
     }
   ],
-  "meta": { "page": 1, "limit": 20, "total": 42, "total_pages": 3 }
+  "meta": { "page": 1, "limit": 20, "totalCount": 100 }
 }
 ```
 
----
-
-### `[UC-47]` Xem chi tiết khách hàng
-
-`GET /customers/{id}`
-
-| | |
-|---|---|
-| **Vai trò** | Manager |
-| **UC** | UC-47 |
-| **Mô tả** | Thông tin đầy đủ một khách hàng. |
-
-**Response `200`**
-
+### `GET /api/v1/customers/:id`
+- **Use Case:** UC 2.9 - View Customer Information
+- **Description:** Retrieves details of a specific customer by ID.
+- **Response (200 OK):**
 ```json
 {
   "success": true,
   "data": {
-    "id": 1,
-    "full_name": "Trần Thị B",
-    "phone": "0908765432",
-    "email": "b@example.com",
-    "address": "123 Lê Lợi, Q1",
-    "notes": "Khách quen, ưu tiên tông trắng",
-    "status": "active",
-    "created_by": { "id": 5, "full_name": "Nguyễn Văn A" },
-    "updated_by": { "id": 5, "full_name": "Nguyễn Văn A" },
-    "created_at": "2026-02-01T08:00:00Z",
-    "updated_at": "2026-02-01T08:00:00Z"
+    "id": "customer-uuid",
+    "fullName": "Jane Doe",
+    "phone": "+198765432",
+    "email": "jane@example.com",
+    "address": "123 Event Street",
+    "createdAt": "2026-06-22T10:00:00Z",
+    "updatedAt": "2026-06-22T10:00:00Z"
   }
 }
 ```
 
-**Lỗi:** `404` — không tìm thấy khách hàng.
-
----
-
-### `[UC-48]` Đăng ký khách hàng mới
-
-`POST /customers`
-
-| | |
-|---|---|
-| **Vai trò** | Manager |
-| **UC** | UC-48 |
-| **Mô tả** | Tạo hồ sơ khách hàng mới. Số điện thoại là định danh, không được trùng. |
-
-**Request body**
-
+### `POST /api/v1/customers`
+- **Use Case:** UC 2.9 - Register Customer
+- **Description:** Registers a new customer in the system.
+- **Business Rules:**
+  - BR-09-01: Phone number must be unique. If it exists, return `MSG-UC09-05`.
+  - BR-09-02: Log to `AuditLog`.
+- **Request Body:**
 ```json
 {
-  "full_name": "Trần Thị B",
-  "phone": "0908765432",
-  "email": "b@example.com",
-  "address": "123 Lê Lợi, Q1",
-  "notes": "Khách quen"
+  "fullName": "Jane Doe",
+  "phone": "+198765432",
+  "email": "jane@example.com",
+  "address": "123 Event Street"
 }
 ```
-
-**Response `201`**
-
+- **Response (201 Created):**
 ```json
 {
   "success": true,
-  "code": "MSG-CUS-01",
-  "message": "Tạo khách hàng thành công",
-  "data": { "id": 1, "full_name": "Trần Thị B", "phone": "0908765432", "status": "active" }
+  "message": "Customer registered successfully.",
+  "data": { "id": "customer-uuid" }
 }
 ```
 
-**Lỗi có thể gặp**
-
-| HTTP | code | Khi nào |
-|------|------|---------|
-| 400 | MSG-CUS-02 | Thiếu `full_name` hoặc `phone` |
-| 409 | MSG-CUS-03 | Số điện thoại đã tồn tại |
-
----
-
-### `[UC-49]` Cập nhật thông tin khách hàng
-
-`PUT /customers/{id}`
-
-| | |
-|---|---|
-| **Vai trò** | Manager |
-| **UC** | UC-49 |
-| **Mô tả** | Cập nhật thông tin khách hàng. |
-
-**Request body**
-
+### `PUT /api/v1/customers/:id`
+- **Use Case:** UC 2.9 - Update Customer
+- **Description:** Updates the profile information of an existing customer.
+- **Request Body:**
 ```json
 {
-  "full_name": "Trần Thị B",
-  "phone": "0908765432",
-  "email": "new@example.com",
-  "address": "456 Nguyễn Huệ, Q1",
-  "notes": "Cập nhật địa chỉ"
+  "fullName": "Jane Doe Smith",
+  "email": "jane.smith@example.com",
+  "address": "456 New Venue Ave"
 }
 ```
-
-**Response `200`**
-
+- **Response (200 OK):**
 ```json
-{ "success": true, "code": "MSG-CUS-04", "message": "Cập nhật khách hàng thành công", "data": { "id": 1 } }
+{
+  "success": true,
+  "message": "Customer updated successfully."
+}
 ```
-
-**Lỗi có thể gặp**
-
-| HTTP | code | Khi nào |
-|------|------|---------|
-| 404 | — | Không tìm thấy khách hàng |
-| 409 | MSG-CUS-03 | Số điện thoại trùng khách hàng khác |

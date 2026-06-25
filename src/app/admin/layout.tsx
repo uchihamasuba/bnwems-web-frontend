@@ -4,12 +4,12 @@ import Header from '@/components/layout/Header';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ProtectedRoute requiredRole="Admin">
-      <div className="flex">
+    <ProtectedRoute requiredRole="ADMIN">
+      <div className="flex h-screen overflow-hidden">
         <Sidebar />
-        <div className="flex flex-1 flex-col">
+        <div className="flex flex-1 flex-col overflow-hidden">
           <Header />
-          <main className="flex-1 bg-slate-50">{children}</main>
+          <main className="flex-1 overflow-y-auto bg-slate-50">{children}</main>
         </div>
       </div>
     </ProtectedRoute>

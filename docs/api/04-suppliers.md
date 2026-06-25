@@ -1,173 +1,193 @@
-# 04. Nhà cung cấp & Công nợ — API
+# Master Data & Policies: Supplier & Transaction Management
 
-> **UC:** 28–31, 71–74 · **Vai trò:** Admin (master), Manager (giao dịch) · **Nền tảng:** Web
-> Quy ước chung & template: [README.md](./README.md)
-> Prefix MSG: thuê/nhận NCC **MSG-SR**, mua NCC **MSG-SPU**, thanh toán NCC **MSG-SPAY**, công nợ **MSG-SD** (mục 8). NCC (CRUD) chưa có prefix → đề xuất **MSG-SUP**.
+## Overview
+This module handles **UC 2.16 (Supplier Transaction & Debt Management)** and **UC 2.24 (Supplier Item Receiving & Return Support)**.
+It manages external partners, their transactions (`SupplierTransaction`), receiving/returns, and financial debt (`SupplierDebt`).
 
-> ⚠️ **Cần xác nhận (DB lệch):** `documents.md`/`ERD.md` có *Supplier Transaction* (loại **Thuê/Mua**) tách khỏi *Supplier Payable*. `database.md` **gộp** lại thành `supplier_payables` với `transaction_type` = `purchase | return | adjustment` — **không có loại "thuê" (rental)**. → UC-71 (thuê thiết bị) chưa có chỗ mô hình hóa đúng. Mẫu dưới bám `database.md` và đánh dấu ⚠️ tại UC-71.
+## Standard Error Codes (SRS Mapping)
+- `MSG-UC16-01`: Required information is missing or invalid.
+- `MSG-UC16-02`: System cannot complete the request.
+- `MSG-UC16-03`: You do not have permission to perform this action.
+- `MSG-UC24-01`: Received item quantities do not match the transaction agreement.
+- `MSG-UC24-02`: Evidence missing for supplier return.
 
-## Danh sách endpoint
+## 1. Supplier Master Data (UC 2.16)
 
-| UC | Tên | Method · Path | Vai trò | Trạng thái |
-|----|-----|---------------|---------|------------|
-| UC-28 | Xem danh sách nhà cung cấp | `GET /suppliers` | Admin | ✅ |
-| UC-29 | Tạo nhà cung cấp | `POST /suppliers` | Admin | ✅ |
-| UC-30 | Cập nhật nhà cung cấp | `PUT /suppliers/{id}` | Admin | ✅ |
-| UC-31 | Vô hiệu hóa nhà cung cấp | `PATCH /suppliers/{id}/status` | Admin | ✅ |
-| UC-71 | Ghi nhận thuê thiết bị NCC | `POST /supplier-payables` ⚠️ | Manager | ✅ |
-| UC-72 | Ghi nhận mua hàng NCC | `POST /supplier-payables` | Manager | ✅ |
-| UC-73 | Giám sát công nợ NCC | `GET /supplier-payables` | Manager | ✅ |
-| UC-74 | Ghi nhận thanh toán NCC | `POST /supplier-payments` | Manager | ✅ |
-
----
-
-## Chi tiết endpoint
-
-### `[UC-28]` Danh sách · `[UC-29]` Tạo · `[UC-30]` Cập nhật · `[UC-31]` Vô hiệu hóa nhà cung cấp
-
-`GET /suppliers` · `POST /suppliers` · `PUT /suppliers/{id}` · `PATCH /suppliers/{id}/status`
-
-| | |
-|---|---|
-| **Vai trò** | Admin |
-| **UC** | UC-28 → UC-31 |
-| **Mô tả** | CRUD hồ sơ nhà cung cấp (`suppliers`). |
-
-**POST request body**
-
-```json
-{
-  "name": "Công ty Âm thanh ABC",
-  "contact_person": "Anh Hùng",
-  "phone": "0934567890",
-  "email": "abc@supplier.vn",
-  "address": "12 Trường Chinh"
-}
-```
-
-**Response `201`**
-
-```json
-{ "success": true, "code": "MSG-SUP-01", "message": "Tạo nhà cung cấp thành công", "data": { "id": 3, "name": "Công ty Âm thanh ABC", "status": "active" } }
-```
-
----
-
-### `[UC-72]` Ghi nhận mua hàng NCC `[UC-71]` Ghi nhận thuê thiết bị NCC
-
-`POST /supplier-payables`
-
-| | |
-|---|---|
-| **Vai trò** | Manager |
-| **UC · BR** | UC-72 · BR-SPU01–04 · UC-71 · BR-SR01–04 |
-| **Mô tả** | Ghi nhận một chứng từ mua/nhập từ NCC (`supplier_payables` + `supplier_payable_items`). Có thể gắn với đơn hàng. Tạo công nợ phải trả (`status=unpaid`). |
-
-**Request body**
-
-```json
-{
-  "supplier_id": 3,
-  "order_id": 10,
-  "transaction_type": "purchase",
-  "transaction_date": "2026-06-20",
-  "due_date": "2026-07-20",
-  "reference_code": "HD-ABC-001",
-  "items": [
-    { "catalog_item_id": 10, "quantity": 5, "unit_price": 400000 }
-  ]
-}
-```
-*(Lưu ý: `transaction_type` có thể nhận các giá trị: `"purchase" | "return" | "adjustment" | "rental"`. Trường `order_id` là tùy chọn, nhưng bắt buộc nếu đây là giao dịch nhập/thuê cho một đơn hàng cụ thể).*
-
-**Response `201`**
-
-```json
-{
-  "success": true,
-  "code": "MSG-SPU-01",
-  "message": "Ghi nhận mua hàng NCC thành công",
-  "data": { "id": 8, "supplier_id": 3, "total_amount": 2000000, "paid_amount": 0, "status": "unpaid" }
-}
-```
-
-**Lỗi:** `400 MSG-SPU-02` — số tiền ≤ 0 / không có item; `404` — NCC không tồn tại.
-
-> ⚠️ **Lưu ý DB:** API yêu cầu DB phải bổ sung giá trị `rental` vào ENUM `transaction_type` và cột `order_id` (nullable FK) vào bảng `supplier_payables` để xử lý trọn vẹn UC-71 và hỗ trợ báo cáo theo đơn hàng.
-
----
-
-### `[UC-73]` Giám sát công nợ NCC
-
-`GET /supplier-payables`
-
-| | |
-|---|---|
-| **Vai trò** | Manager |
-| **UC** | UC-73 |
-| **Mô tả** | Danh sách công nợ NCC, lọc theo NCC/trạng thái thanh toán; hiển thị `total_amount`, `paid_amount`, còn lại. |
-
-**Query params:** `?supplier_id=3&status=unpaid&page=1&limit=20`
-
-**Response `200`**
-
+### `GET /api/v1/suppliers`
+- **Use Case:** UC 2.16 (implied) - View Supplier List
+- **Description:** Retrieves a paginated list of suppliers. Manager access required.
+- **Query Parameters:**
+  - `page` (number, default 1)
+  - `limit` (number, default 20)
+  - `search` (string, optional) - searches by name
+  - `status` (enum, optional) - ACTIVE, INACTIVE
+- **Response (200 OK):**
 ```json
 {
   "success": true,
   "data": [
     {
-      "id": 8,
-      "supplier": { "id": 3, "name": "Công ty Âm thanh ABC" },
-      "total_amount": 2000000,
-      "paid_amount": 500000,
-      "remaining": 1500000,
-      "due_date": "2026-07-20",
-      "status": "partial"
+      "id": "supplier-uuid",
+      "name": "AudioVisual Pro Inc.",
+      "contactPerson": "John Doe",
+      "phone": "+123456789",
+      "email": "contact@audiovisual.com",
+      "status": "ACTIVE",
+      "createdAt": "2026-06-22T10:00:00Z"
     }
   ],
-  "meta": { "page": 1, "limit": 20, "total": 8, "total_pages": 1 }
+  "meta": { "page": 1, "limit": 20, "totalCount": 15 }
 }
 ```
 
----
-
-### `[UC-74]` Ghi nhận thanh toán NCC
-
-`POST /supplier-payments`
-
-| | |
-|---|---|
-| **Vai trò** | Manager |
-| **UC · BR** | UC-74 · BR-SPAY01–04 |
-| **Mô tả** | Ghi nhận một đợt chi trả cho NCC (`supplier_payments`). Có thể trả đích danh cho một chứng từ nợ. Số tiền > 0 và ≤ dư nợ; cập nhật `paid_amount`/`status` của công nợ. |
-
-**Request body**
-
+### `POST /api/v1/suppliers`
+- **Description:** Creates a new supplier record. Manager access required.
+- **Business Rules:**
+  - BR-16-01: Supplier name must be unique.
+  - BR-16-02: Log to `AuditLog`.
+- **Request Body:**
 ```json
 {
-  "supplier_id": 3,
-  "supplier_payable_id": 8,
-  "amount": 1500000,
-  "payment_date": "2026-07-10T10:00:00Z",
-  "payment_method": "bank_transfer",
-  "reference_code": "UNC-0710"
+  "name": "AudioVisual Pro Inc.",
+  "contactPerson": "John Doe",
+  "phone": "+123456789",
+  "email": "contact@audiovisual.com",
+  "address": "123 Supplier St"
 }
 ```
-
-**Response `201`**
-
+- **Response (201 Created):**
 ```json
 {
   "success": true,
-  "code": "MSG-SPAY-01",
-  "message": "Ghi nhận thanh toán NCC thành công",
-  "data": { "id": 12, "supplier_payable_id": 8, "amount": 1500000, "payable_status": "paid" }
+  "message": "Supplier created successfully."
 }
 ```
 
-**Lỗi có thể gặp**
+## 2. Supplier Transactions (UC 2.16, UC 2.24)
 
-| HTTP | code | Khi nào |
-|------|------|---------|
-| 400 | MSG-SPAY-02 | Số tiền ≤ 0 |
-| 409 | MSG-SPAY-03 | Số tiền vượt quá dư nợ (BR-SPAY02) |
+### `POST /api/v1/supplier-transactions`
+- **Use Case:** UC 2.16 - Create Supplier Rental/Purchase Order
+- **Description:** Creates a transaction to rent or purchase items from a supplier for an order.
+- **Business Rules:**
+  - BR-16-03: `totalCost` must equal the sum of item costs.
+  - BR-16-04: Creates or updates `SupplierDebt` automatically upon confirmation.
+- **Request Body:**
+```json
+{
+  "supplierId": "supplier-uuid",
+  "orderId": "order-uuid",
+  "transactionType": "RENTAL",
+  "totalCost": 500.00,
+  "details": {
+    "items": [
+      {
+        "catalogItemId": "item-uuid",
+        "quantity": 2,
+        "cost": 250.00
+      }
+    ]
+  }
+}
+```
+- **Response (201 Created):**
+```json
+{
+  "success": true,
+  "message": "Supplier transaction created.",
+  "data": { "id": "tx-uuid", "status": "DRAFT" }
+}
+```
+
+### `PUT /api/v1/supplier-transactions/:id/receive`
+- **Use Case:** UC 2.24 - Supplier Item Receiving Support
+- **Description:** Records the receipt of equipment/materials from a supplier.
+- **Business Rules:**
+  - BR-24-01: Validates `receivedItems` against original transaction details.
+  - BR-24-02: Changes transaction status to `RECEIVED`. Adds items to `Inventory` if applicable.
+- **Request Body:**
+```json
+{
+  "receivedItems": {
+    "items": [{ "catalogItemId": "item-uuid", "quantityReceived": 2 }]
+  },
+  "evidenceUrls": ["https://storage.example.com/receipt.jpg"]
+}
+```
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Items received and logged."
+}
+```
+
+### `PUT /api/v1/supplier-transactions/:id/return`
+- **Use Case:** UC 2.24 - Supplier Item Return Support
+- **Description:** Records the return of rented equipment to a supplier.
+- **Business Rules:**
+  - BR-24-03: Validates return quantities against received quantities.
+  - BR-24-04: Changes status to `RETURNED`. Reduces `Inventory` if applicable.
+- **Request Body:**
+```json
+{
+  "returnedItems": {
+    "items": [{ "catalogItemId": "item-uuid", "quantityReturned": 2 }]
+  },
+  "condition": "GOOD",
+  "evidenceUrls": ["https://storage.example.com/return_receipt.jpg"]
+}
+```
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Items returned to supplier successfully."
+}
+```
+
+## 3. Supplier Debt Management (UC 2.16)
+
+### `GET /api/v1/supplier-debts`
+- **Use Case:** UC 2.16 - Monitor Supplier Debt
+- **Description:** Retrieves the outstanding debts owed to suppliers.
+- **Query Parameters:**
+  - `status` (enum, optional) - UNPAID, PARTIALLY_PAID, PAID
+  - `supplierId` (string, optional)
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "debt-uuid",
+      "supplierId": "supplier-uuid",
+      "amountOwed": 500.00,
+      "amountPaid": 0.00,
+      "status": "UNPAID",
+      "updatedAt": "2026-06-22T10:00:00Z"
+    }
+  ],
+  "meta": { "page": 1, "limit": 20, "totalCount": 5 }
+}
+```
+
+### `POST /api/v1/supplier-debts/:id/pay`
+- **Use Case:** UC 2.16 - Record Supplier Payment
+- **Description:** Records a payment made to a supplier, reducing the debt amount.
+- **Business Rules:**
+  - BR-16-05: Payment amount cannot exceed the remaining `amountOwed` - `amountPaid`.
+  - BR-16-06: Automatically updates debt status to `PARTIALLY_PAID` or `PAID`.
+- **Request Body:**
+```json
+{
+  "amount": 500.00,
+  "paymentRef": "BankTx-12345"
+}
+```
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Payment recorded successfully."
+}
+```

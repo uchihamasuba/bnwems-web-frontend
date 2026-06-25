@@ -1,11 +1,17 @@
 import { mockFailure, mockSuccess } from '@/lib/mock-response';
-import { mockOrders } from '@/mocks/seed';
+import { mockCustomers, mockOrders } from '@/mocks/seed';
 
+// UC 2.11 — GET /api/v1/orders/:id (docs/api/09-orders.md)
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const order = mockOrders.find((o) => o.id === Number(id));
+  const order = mockOrders.find((o) => o.id === id);
   if (!order) {
-    return mockFailure('Không tìm thấy đơn hàng', { status: 404 });
+    return mockFailure('Order not found', { status: 404 });
   }
-  return mockSuccess(order);
+  const customer = mockCustomers.find((c) => c.id === order.customerId);
+
+  return mockSuccess({
+    ...order,
+    customer: customer ? { fullName: customer.fullName, phone: customer.phone } : null,
+  });
 }

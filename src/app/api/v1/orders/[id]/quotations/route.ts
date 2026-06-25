@@ -1,45 +1,71 @@
 import { NextRequest } from 'next/server';
-import { mockSuccess } from '@/lib/mock-response';
+import { mockFailure, mockSuccess } from '@/lib/mock-response';
 import { mockQuotations, nextId } from '@/mocks/seed';
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const quotations = mockQuotations.filter((q) => q.order_id === Number(id));
-  return mockSuccess(quotations);
+function toQuotationSummary(quotation: (typeof mockQuotations)[number]) {
+  return {
+    id: quotation.id,
+    orderId: quotation.orderId,
+    version: quotation.version,
+    subtotal: quotation.subtotal,
+    tax: quotation.tax,
+    discount: quotation.discount,
+    totalAmount: quotation.totalAmount,
+    status: quotation.status,
+    createdAt: quotation.createdAt,
+  };
 }
 
+// UC 2.10 — GET /api/v1/orders/:orderId/quotations (docs/api/08-quotations.md)
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const searchParams = request.nextUrl.searchParams;
+  const page = Number(searchParams.get('page') ?? '1');
+  const limit = Number(searchParams.get('limit') ?? '20');
+
+  const all = mockQuotations.filter((q) => q.orderId === id);
+  const totalCount = all.length;
+  const start = (page - 1) * limit;
+  const paged = all.slice(start, start + limit);
+
+  return mockSuccess(paged.map((q) => toQuotationSummary(q)), { meta: { page, limit, totalCount } });
+}
+
+interface QuotationItemInput {
+  catalogItemId: string;
+  quantity: number;
+  price: number;
+}
+
+// UC 2.10 — POST /api/v1/orders/:orderId/quotations (docs/api/08-quotations.md)
+// BR-10-01: version tự tăng theo các báo giá hiện có của order.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await request.json();
-  const lines = (body.lines ?? []) as Array<{ catalog_item_id: number; quantity: number; unit_price: number }>;
-  const total_amount = lines.reduce((sum, line) => sum + line.quantity * line.unit_price, 0);
-  const discount_amount = body.discount_amount ?? 0;
+  const items = (body.details?.items ?? []) as QuotationItemInput[];
 
+  if (body.subtotal == null || body.totalAmount == null || items.length === 0) {
+    return mockFailure('Required information is missing or invalid.', { status: 400, code: 'MSG-UC10-01' });
+  }
+
+  const existingVersions = mockQuotations.filter((q) => q.orderId === id).map((q) => q.version);
+  const version = existingVersions.length > 0 ? Math.max(...existingVersions) + 1 : 1;
+
+  const now = new Date().toISOString();
   const quotation = {
     id: nextId('quotation'),
-    order_id: Number(id),
-    version: 1,
-    total_amount,
-    discount_amount,
-    final_amount: total_amount - discount_amount,
-    notes: body.notes ?? null,
-    status: 'draft',
-    created_by: { id: 5, full_name: 'Nguyễn Văn A' },
-    created_at: new Date().toISOString(),
-    lines,
+    orderId: id,
+    version,
+    subtotal: Number(body.subtotal),
+    tax: Number(body.tax ?? 0),
+    discount: Number(body.discount ?? 0),
+    totalAmount: Number(body.totalAmount),
+    details: { items },
+    status: 'DRAFT' as const,
+    createdAt: now,
+    updatedAt: now,
   };
-  mockQuotations.push(quotation as (typeof mockQuotations)[number]);
+  mockQuotations.push(quotation);
 
-  return mockSuccess(
-    {
-      id: quotation.id,
-      order_id: quotation.order_id,
-      version: quotation.version,
-      total_amount: quotation.total_amount,
-      discount_amount: quotation.discount_amount,
-      final_amount: quotation.final_amount,
-      status: quotation.status,
-    },
-    { code: 'MSG-QT-01', message: 'Tạo báo giá thành công', status: 201 }
-  );
+  return mockSuccess({ id: quotation.id, version: quotation.version }, { message: 'Quotation created.', status: 201 });
 }

@@ -6,11 +6,18 @@ interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   title?: string;
+  subtitle?: string;
+  size?: 'md' | 'lg';
   children: React.ReactNode;
   footer?: React.ReactNode;
 }
 
-export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, footer }) => {
+const sizeClasses: Record<'md' | 'lg', string> = {
+  md: 'max-w-lg',
+  lg: 'max-w-2xl',
+};
+
+export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, subtitle, size = 'md', children, footer }) => {
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -24,10 +31,13 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-      <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-lg">
+      <div className={`w-full ${sizeClasses[size]} rounded-xl bg-white p-6 shadow-lg`}>
         {title && (
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+          <div className="mb-4 flex items-start justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+              {subtitle && <p className="mt-0.5 text-sm text-slate-500">{subtitle}</p>}
+            </div>
             <button onClick={onClose} className="text-slate-400 hover:text-slate-600" aria-label="Đóng">
               ✕
             </button>
