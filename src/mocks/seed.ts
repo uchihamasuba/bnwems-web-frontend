@@ -2,12 +2,26 @@
 // Theo schema mới trong docs/api/ (đồng bộ lại 2026-06-23 từ repo Trintrin0408/Context,
 // branch feature/fix-api_v1): id dạng string, field camelCase, enum chữ hoa.
 
-export type UserRole = 'ADMIN' | 'MANAGER' | 'LEADER_STAFF' | 'TECHNICAL_STAFF';
+export type UserRole = 'Admin' | 'Manager' | 'LEADER_STAFF' | 'TECHNICAL_STAFF';
 export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'LOCKED';
 
+const ROLE_ID_BY_ROLE: Record<UserRole, string> = {
+  Admin: '1',
+  Manager: '2',
+  LEADER_STAFF: '3',
+  TECHNICAL_STAFF: '4',
+};
+
+export function roleIdFor(role: UserRole): string {
+  return ROLE_ID_BY_ROLE[role];
+}
+
 // docs/api/02-users-roles.md (UC 2.4) — không còn entity `role`/`roles` riêng, role là enum cố định.
+// roleId chỉ dùng để dựng response dạng { roleId, roleName } cho /auth/login và /auth/profile
+// (docs/api/01-auth.md) — không ảnh hưởng tới shape role/status (vẫn chữ hoa) của module /users.
 export interface MockUser {
   id: string;
+  roleId: string;
   username: string;
   password: string;
   fullName: string;
@@ -42,24 +56,27 @@ function createInitialUserStore(): UserMockStore {
     users: [
       {
         id: 'usr-1',
+        roleId: '1',
         username: 'admin01',
         password: 'Admin@123',
         fullName: 'Quản trị viên',
-        role: 'ADMIN',
+        role: 'Admin',
         status: 'ACTIVE',
         createdAt: '2026-01-01T08:00:00Z',
       },
       {
         id: 'usr-2',
+        roleId: '2',
         username: 'manager01',
         password: 'Manager@123',
         fullName: 'Nguyễn Văn A',
-        role: 'MANAGER',
+        role: 'Manager',
         status: 'ACTIVE',
         createdAt: '2026-01-05T08:00:00Z',
       },
       {
         id: 'usr-3',
+        roleId: '3',
         username: 'leader01',
         password: 'Leader@123',
         fullName: 'Trần Văn D',
@@ -69,6 +86,7 @@ function createInitialUserStore(): UserMockStore {
       },
       {
         id: 'usr-4',
+        roleId: '4',
         username: 'tech01',
         password: 'Tech@123',
         fullName: 'Phạm Thị E',

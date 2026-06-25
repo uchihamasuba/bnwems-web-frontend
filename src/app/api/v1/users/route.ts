@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { mockFailure, mockSuccess } from '@/lib/mock-response';
-import { mockUsers, nextId } from '@/mocks/seed';
+import { mockUsers, nextId, roleIdFor, type UserRole } from '@/mocks/seed';
 
 // UC 2.4 — GET /api/v1/users (docs/api/02-users-roles.md)
 function toUserResponse(user: (typeof mockUsers)[number]) {
@@ -59,6 +59,7 @@ export async function POST(request: NextRequest) {
 
   const newUser = {
     id: nextId('user'),
+    roleId: roleIdFor(body.role as UserRole),
     username: body.username as string,
     password: body.password as string,
     fullName: body.fullName as string,

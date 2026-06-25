@@ -30,7 +30,7 @@ const EMPTY_VALUES: UserFormValues = {
   username: '',
   password: '',
   fullName: '',
-  role: 'MANAGER',
+  role: 'Manager',
 };
 
 export function UserFormModal({

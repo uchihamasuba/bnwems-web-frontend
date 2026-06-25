@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/Input';
 
 export default function Header() {
   const { user } = useAuth();
-  const profilePath = user?.role === 'ADMIN' ? '/admin/profile' : '/manager/profile';
+  const profilePath = user?.role.roleName === 'Admin' ? '/admin/profile' : '/manager/profile';
 
   return (
     <header className="flex h-16 items-center justify-between border-b border-slate-100 bg-white px-6">

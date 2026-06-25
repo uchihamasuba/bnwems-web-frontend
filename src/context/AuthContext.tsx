@@ -1,14 +1,10 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { authApiService } from '../services/auth.service';
+import type { AuthUser } from '../types/auth';
 
-export interface AuthUser {
-  id: string;
-  username: string;
-  fullName: string;
-  role: 'ADMIN' | 'MANAGER' | 'LEADER_STAFF' | 'TECHNICAL_STAFF';
-  status: 'ACTIVE' | 'INACTIVE' | 'LOCKED';
-}
+export type { AuthUser };
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -27,21 +23,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const storedToken = localStorage.getItem('bnwems_token');
-      const storedUser = localStorage.getItem('bnwems_user');
-      if (storedToken && storedUser) {
+    const hydrate = async () => {
+      try {
+        const storedToken = localStorage.getItem('bnwems_token');
+        const storedUser = localStorage.getItem('bnwems_user');
+        if (!storedToken || !storedUser) return;
+
         // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time session hydration from localStorage on mount, not a render loop
         setToken(storedToken);
         setUser(JSON.parse(storedUser));
+
+        // Re-validate the stored token against the current backend — a token
+        // issued by a previously configured backend (e.g. after switching
+        // NEXT_PUBLIC_API_BASE_URL) must not be trusted just because it exists.
+        const profile = await authApiService.getProfile();
+        setUser(profile.data);
+      } catch {
+        localStorage.removeItem('bnwems_token');
+        localStorage.removeItem('bnwems_user');
+        setToken(null);
+        setUser(null);
+      } finally {
+        setIsLoading(false);
       }
-    } catch {
-      // Invalid stored data, clear it
-      localStorage.removeItem('bnwems_token');
-      localStorage.removeItem('bnwems_user');
-    } finally {
-      setIsLoading(false);
-    }
+    };
+
+    hydrate();
   }, []);
 
   const login = (newToken: string, newUser: AuthUser) => {

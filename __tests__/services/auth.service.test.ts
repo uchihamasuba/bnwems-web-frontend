@@ -45,7 +45,7 @@ describe('authApiService — login()', () => {
     const mockResponse = {
       data: {
         success: true,
-        data: { token: 'mock.token', expiresIn: 86400, user: { id: 'usr-1', username: 'manager_test' } },
+        data: { token: 'mock.token', expiresIn: 86400, user: { userId: 'usr-1', username: 'manager_test' } },
       },
     };
     (mockApi.post as jest.Mock).mockResolvedValue(mockResponse);
@@ -105,7 +105,7 @@ describe('authApiService — getProfile()', () => {
 
   it('should call GET /auth/profile', async () => {
     const mockResponse = {
-      data: { success: true, data: { id: 'usr-1', username: 'manager01', fullName: 'Manager One', role: 'MANAGER', status: 'ACTIVE' } },
+      data: { success: true, data: { userId: 'usr-1', username: 'manager01', fullName: 'Manager One', role: { roleId: '2', roleName: 'Manager' }, status: 'active' } },
     };
     (mockApi.get as jest.Mock).mockResolvedValue(mockResponse);
 

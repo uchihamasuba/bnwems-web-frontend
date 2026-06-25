@@ -4,7 +4,7 @@ import Header from '@/components/layout/Header';
 
 export default function ManagerLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ProtectedRoute requiredRole="MANAGER">
+    <ProtectedRoute requiredRole="Manager">
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <div className="flex flex-1 flex-col overflow-hidden">

@@ -1,14 +1,19 @@
 // UC 2.1, 2.2 (docs/api/01-auth.md)
 
-export type UserRole = 'ADMIN' | 'MANAGER' | 'LEADER_STAFF' | 'TECHNICAL_STAFF';
-export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'LOCKED';
+export type UserRole = 'Admin' | 'Manager' | 'LEADER_STAFF' | 'TECHNICAL_STAFF';
+export type AuthUserStatus = 'active' | 'inactive' | 'locked';
+
+export interface AuthUserRole {
+  roleId: string;
+  roleName: UserRole;
+}
 
 export interface AuthUser {
-  id: string;
+  userId: string;
   username: string;
   fullName: string;
-  role: UserRole;
-  status: UserStatus;
+  role: AuthUserRole;
+  status: AuthUserStatus;
 }
 
 // GET /api/v1/auth/profile

@@ -47,10 +47,10 @@ describe('userApiService — getUsers()', () => {
     const mockResponse = { data: { success: true, data: [], meta: { page: 1, limit: 20, totalCount: 0 } } };
     (mockApi.get as jest.Mock).mockResolvedValue(mockResponse);
 
-    await userApiService.getUsers({ page: 1, limit: 20, search: 'a', role: 'MANAGER', status: 'ACTIVE' });
+    await userApiService.getUsers({ page: 1, limit: 20, search: 'a', role: 'Manager', status: 'ACTIVE' });
 
     expect(mockApi.get).toHaveBeenCalledWith('/users', {
-      params: { page: 1, limit: 20, search: 'a', role: 'MANAGER', status: 'ACTIVE' },
+      params: { page: 1, limit: 20, search: 'a', role: 'Manager', status: 'ACTIVE' },
     });
   });
 });
@@ -82,9 +82,9 @@ describe('userApiService — updateUser()', () => {
     const mockResponse = { data: { success: true, message: 'User updated successfully' } };
     (mockApi.put as jest.Mock).mockResolvedValue(mockResponse);
 
-    await userApiService.updateUser('usr-20', { fullName: 'Lê Văn C', role: 'MANAGER' });
+    await userApiService.updateUser('usr-20', { fullName: 'Lê Văn C', role: 'Manager' });
 
-    expect(mockApi.put).toHaveBeenCalledWith('/users/usr-20', { fullName: 'Lê Văn C', role: 'MANAGER' });
+    expect(mockApi.put).toHaveBeenCalledWith('/users/usr-20', { fullName: 'Lê Văn C', role: 'Manager' });
   });
 });
 

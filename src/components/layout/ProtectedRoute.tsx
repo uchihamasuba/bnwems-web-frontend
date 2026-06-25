@@ -13,7 +13,7 @@ interface ProtectedRouteProps {
 export default function ProtectedRoute({ requiredRole, children }: ProtectedRouteProps) {
   const { user, isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
-  const isRoleMismatch = Boolean(requiredRole) && user?.role !== requiredRole;
+  const isRoleMismatch = Boolean(requiredRole) && user?.role.roleName !== requiredRole;
 
   useEffect(() => {
     if (isLoading) return;
@@ -22,7 +22,7 @@ export default function ProtectedRoute({ requiredRole, children }: ProtectedRout
       return;
     }
     if (isRoleMismatch) {
-      router.replace(ROLE_DASHBOARD_PATH[user?.role ?? ''] ?? '/auth/login');
+      router.replace(ROLE_DASHBOARD_PATH[user?.role.roleName ?? ''] ?? '/auth/login');
     }
   }, [isLoading, isAuthenticated, isRoleMismatch, user, router]);
 

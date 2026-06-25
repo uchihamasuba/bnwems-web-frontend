@@ -15,7 +15,7 @@ export const PermissionProvider = ({ children }: { children: ReactNode }) => {
 
   const value = useMemo<PermissionContextValue>(
     () => ({
-      can: (key: PermissionKey) => (user ? (PERMISSIONS[key]?.includes(user.role) ?? false) : false),
+      can: (key: PermissionKey) => (user ? (PERMISSIONS[key]?.includes(user.role.roleName) ?? false) : false),
     }),
     [user]
   );

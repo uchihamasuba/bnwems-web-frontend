@@ -58,7 +58,7 @@ export default function Sidebar() {
   const { user, logout } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
-  const items = user?.role === 'ADMIN' ? ADMIN_NAV : MANAGER_NAV;
+  const items = user?.role.roleName === 'Admin' ? ADMIN_NAV : MANAGER_NAV;
 
   const handleLogout = () => {
     logout();

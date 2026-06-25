@@ -19,11 +19,11 @@ export async function POST(request: NextRequest) {
       token: `mock.${user.id}.${Date.now()}`,
       expiresIn: 86400,
       user: {
-        id: user.id,
+        userId: user.id,
         username: user.username,
         fullName: user.fullName,
-        role: user.role,
-        status: user.status,
+        role: { roleId: user.roleId, roleName: user.role },
+        status: user.status.toLowerCase(),
       },
     },
     { message: 'Login successful' }

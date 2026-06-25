@@ -12,11 +12,11 @@ export async function GET(request: NextRequest) {
   }
 
   return mockSuccess({
-    id: user.id,
+    userId: user.id,
     username: user.username,
     fullName: user.fullName,
-    role: user.role,
-    status: user.status,
+    role: { roleId: user.roleId, roleName: user.role },
+    status: user.status.toLowerCase(),
     createdAt: user.createdAt,
     updatedAt: user.createdAt,
   });

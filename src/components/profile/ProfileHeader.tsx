@@ -9,9 +9,9 @@ import { ROLE_OPTIONS } from '@/constants/roles';
 import type { AuthProfile } from '@/types/auth';
 
 const STATUS_LABEL: Record<string, string> = {
-  ACTIVE: 'Đang hoạt động',
-  INACTIVE: 'Đã vô hiệu hóa',
-  LOCKED: 'Tạm khóa',
+  active: 'Đang hoạt động',
+  inactive: 'Đã vô hiệu hóa',
+  locked: 'Tạm khóa',
 };
 
 interface ProfileHeaderProps {
@@ -45,8 +45,10 @@ export function ProfileHeader({ activeTab, infoHref, securityHref, onProfileLoad
             <>
               <h2 className="text-lg font-semibold text-slate-900">{profile.fullName}</h2>
               <div className="mt-1.5 flex items-center gap-2">
-                <Badge variant="neutral">{ROLE_OPTIONS.find((r) => r.value === profile.role)?.label ?? profile.role}</Badge>
-                <Badge variant={getStatusBadgeVariant(profile.status)}>
+                <Badge variant="neutral">
+                  {ROLE_OPTIONS.find((r) => r.value === profile.role.roleName)?.label ?? profile.role.roleName}
+                </Badge>
+                <Badge variant={getStatusBadgeVariant(profile.status.toUpperCase())}>
                   {STATUS_LABEL[profile.status] ?? profile.status}
                 </Badge>
               </div>

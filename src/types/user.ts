@@ -3,7 +3,7 @@
 // (ADMIN/MANAGER/LEADER_STAFF/TECHNICAL_STAFF), không gán qua endpoint riêng mà sửa trực
 // tiếp trong PUT /users/:id. Email/phone cũng không còn có trong response của module này.
 
-export type UserRole = 'ADMIN' | 'MANAGER' | 'LEADER_STAFF' | 'TECHNICAL_STAFF';
+export type UserRole = 'Admin' | 'Manager' | 'LEADER_STAFF' | 'TECHNICAL_STAFF';
 export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'LOCKED';
 
 // GET /api/v1/users

@@ -20,7 +20,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (isAuthLoading || !isAuthenticated || !user) return;
-    router.replace(ROLE_DASHBOARD_PATH[user.role] ?? '/auth/login');
+    router.replace(ROLE_DASHBOARD_PATH[user.role.roleName] ?? '/auth/login');
   }, [isAuthLoading, isAuthenticated, user, router]);
 
   const handleSubmit = async (event: SubmitEvent<HTMLFormElement>) => {
@@ -31,7 +31,7 @@ export default function LoginPage() {
     try {
       const response = await authApiService.login({ username, password });
       const { token, user: loggedInUser } = response.data;
-      const dashboardPath = ROLE_DASHBOARD_PATH[loggedInUser.role];
+      const dashboardPath = ROLE_DASHBOARD_PATH[loggedInUser.role.roleName];
 
       if (!dashboardPath) {
         setError('Vai trò tài khoản không được hỗ trợ trên web.');

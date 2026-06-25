@@ -30,7 +30,7 @@ export function ProfileView({ infoHref, securityHref }: Readonly<ProfileViewProp
           <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4">
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Mã người dùng</p>
-              <p className="mt-1 text-sm font-medium text-slate-800">{profile.id}</p>
+              <p className="mt-1 text-sm font-medium text-slate-800">{profile.userId}</p>
             </div>
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Tên đăng nhập</p>
