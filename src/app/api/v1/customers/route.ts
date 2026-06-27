@@ -21,7 +21,14 @@ export async function GET(request: NextRequest) {
 
   const totalCount = result.length;
   const start = (page - 1) * limit;
-  const paged = result.slice(start, start + limit);
+  const paged = result.slice(start, start + limit).map((c) => ({
+    customerId: c.id,
+    fullName: c.fullName,
+    phone: c.phone,
+    email: c.email,
+    address: c.address,
+    createdAt: c.createdAt,
+  }));
 
   return mockSuccess(paged, { meta: { page, limit, totalCount } });
 }
@@ -49,5 +56,5 @@ export async function POST(request: NextRequest) {
   };
   mockCustomers.push(customer);
 
-  return mockSuccess({ id: customer.id }, { message: 'Customer registered successfully.', status: 201 });
+  return mockSuccess({ customerId: customer.id }, { message: 'Customer registered successfully.', status: 201 });
 }

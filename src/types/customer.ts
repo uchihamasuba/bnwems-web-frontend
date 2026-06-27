@@ -1,7 +1,7 @@
 // UC 2.9 (docs/api/07-customers.md)
 
 export interface Customer {
-  id: string;
+  customerId: string;
   fullName: string;
   phone: string;
   email: string;

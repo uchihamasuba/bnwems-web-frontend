@@ -11,7 +11,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const customer = mockCustomers.find((c) => c.id === order.customerId);
 
   return mockSuccess({
-    ...order,
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    customerId: order.customerId,
+    eventStartDate: order.eventDate,
+    venueAddress: order.venueAddress,
+    status: order.status,
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
     customer: customer ? { fullName: customer.fullName, phone: customer.phone } : null,
   });
 }

@@ -8,7 +8,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (!customer) {
     return mockFailure('Customer not found', { status: 404 });
   }
-  return mockSuccess(customer);
+  return mockSuccess({
+    customerId: customer.id,
+    fullName: customer.fullName,
+    phone: customer.phone,
+    email: customer.email,
+    address: customer.address,
+    createdAt: customer.createdAt,
+    updatedAt: customer.updatedAt,
+  });
 }
 
 // UC 2.9 — PUT /api/v1/customers/:id (docs/api/07-customers.md)

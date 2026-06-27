@@ -13,7 +13,7 @@ export interface ManagerDashboardStats {
   ordersInProgress: number;
   pendingChangeRequests: number;
   tasksToday: number;
-  alerts: { type: string; taskId: string }[];
+  alerts: { type: string; workTaskId: string }[];
 }
 
 // GET /api/v1/reports/revenue

@@ -49,6 +49,8 @@ declare global {
   var __bnwemsWarehouseStore: WarehouseMockStore | undefined;
   var __bnwemsInventoryStore: InventoryMockStore | undefined;
   var __bnwemsWarehouseHistoryStore: WarehouseHistoryMockStore | undefined;
+  var __bnwemsChangeRequestStore: ChangeRequestMockStore | undefined;
+  var __bnwemsWorkTaskStore: WorkTaskMockStore | undefined;
 }
 
 function createInitialUserStore(): UserMockStore {
@@ -505,8 +507,48 @@ function createInitialOrderStore(): OrderMockStore {
         createdAt: '2026-06-10T08:00:00Z',
         updatedAt: '2026-06-15T09:00:00Z',
       },
+      {
+        id: 'order-2',
+        orderNumber: 'ORD-2026-0002',
+        customerId: 'cust-2',
+        eventDate: '2026-07-20T00:00:00Z',
+        venueAddress: '12 Nguyễn Huệ, Q1',
+        status: 'IN_PROGRESS',
+        createdAt: '2026-06-12T08:00:00Z',
+        updatedAt: '2026-06-18T09:00:00Z',
+      },
+      {
+        id: 'order-3',
+        orderNumber: 'ORD-2026-0003',
+        customerId: 'cust-1',
+        eventDate: '2026-05-10T00:00:00Z',
+        venueAddress: '56 Trần Hưng Đạo, Q5',
+        status: 'COMPLETED',
+        createdAt: '2026-04-01T08:00:00Z',
+        updatedAt: '2026-05-12T09:00:00Z',
+      },
+      {
+        id: 'order-4',
+        orderNumber: 'ORD-2026-0004',
+        customerId: 'cust-2',
+        eventDate: '2026-08-05T00:00:00Z',
+        venueAddress: '200 Điện Biên Phủ, Bình Thạnh',
+        status: 'QUOTED',
+        createdAt: '2026-06-20T08:00:00Z',
+        updatedAt: '2026-06-20T08:00:00Z',
+      },
+      {
+        id: 'order-5',
+        orderNumber: 'ORD-2026-0005',
+        customerId: 'cust-1',
+        eventDate: '2026-09-01T00:00:00Z',
+        venueAddress: '8 Lý Tự Trọng, Q1',
+        status: 'DRAFT',
+        createdAt: '2026-06-22T08:00:00Z',
+        updatedAt: '2026-06-22T08:00:00Z',
+      },
     ],
-    nextOrderSeq: 2,
+    nextOrderSeq: 6,
   };
 }
 
@@ -572,6 +614,120 @@ const quotationStore =
   globalThis.__bnwemsQuotationStore ?? (globalThis.__bnwemsQuotationStore = createInitialQuotationStore());
 
 export const mockQuotations = quotationStore.quotations;
+
+// docs/api/09-orders.md (UC 2.27)
+export type ChangeRequestStatus = 'pending' | 'approved' | 'rejected';
+export type MockChangeRequestType = 'add' | 'remove' | 'replace';
+
+export interface MockChangeRequestItem {
+  catalogItemId: string;
+  quantity: number;
+  action: 'add' | 'remove';
+}
+
+export interface MockChangeRequest {
+  id: string;
+  orderId: string;
+  type: MockChangeRequestType;
+  items: MockChangeRequestItem[];
+  status: ChangeRequestStatus;
+  createdAt: string;
+}
+
+interface ChangeRequestMockStore {
+  changeRequests: MockChangeRequest[];
+  nextChangeRequestSeq: number;
+}
+
+function createInitialChangeRequestStore(): ChangeRequestMockStore {
+  return {
+    changeRequests: [
+      {
+        id: 'cr-1',
+        orderId: 'order-1',
+        type: 'add',
+        items: [{ catalogItemId: 'item-1', quantity: 2, action: 'add' }],
+        status: 'pending',
+        createdAt: '2026-06-24T09:00:00Z',
+      },
+      {
+        id: 'cr-2',
+        orderId: 'order-1',
+        type: 'remove',
+        items: [{ catalogItemId: 'item-2', quantity: 1, action: 'remove' }],
+        status: 'pending',
+        createdAt: '2026-06-23T14:30:00Z',
+      },
+    ],
+    nextChangeRequestSeq: 3,
+  };
+}
+
+const changeRequestStore =
+  globalThis.__bnwemsChangeRequestStore ?? (globalThis.__bnwemsChangeRequestStore = createInitialChangeRequestStore());
+
+export const mockChangeRequests = changeRequestStore.changeRequests;
+
+// docs/api/10-survey-assignment.md (UC 2.14, 2.15)
+export type WorkTaskStatus = 'pending' | 'in_progress' | 'completed';
+
+export interface MockWorkTask {
+  id: string;
+  orderId: string;
+  taskType: string;
+  scheduledStart: string;
+  scheduledEnd: string;
+  status: WorkTaskStatus;
+}
+
+interface WorkTaskMockStore {
+  tasks: MockWorkTask[];
+  nextWorkTaskSeq: number;
+}
+
+// Giờ trong ngày hôm nay (theo giờ máy chủ) — để demo "Lịch trình hôm nay" luôn có dữ liệu
+// dù chạy vào ngày nào, không hardcode ngày cụ thể như các seed khác (order/quotation).
+function todayAt(hour: number, minute = 0): string {
+  const d = new Date();
+  d.setHours(hour, minute, 0, 0);
+  return d.toISOString();
+}
+
+function createInitialWorkTaskStore(): WorkTaskMockStore {
+  return {
+    tasks: [
+      {
+        id: 'task-1',
+        orderId: 'order-1',
+        taskType: 'preparation',
+        scheduledStart: todayAt(8, 0),
+        scheduledEnd: todayAt(9, 30),
+        status: 'completed',
+      },
+      {
+        id: 'task-2',
+        orderId: 'order-1',
+        taskType: 'installation',
+        scheduledStart: todayAt(9, 30),
+        scheduledEnd: todayAt(12, 0),
+        status: 'in_progress',
+      },
+      {
+        id: 'task-3',
+        orderId: 'order-1',
+        taskType: 'collection',
+        scheduledStart: todayAt(16, 0),
+        scheduledEnd: todayAt(18, 0),
+        status: 'pending',
+      },
+    ],
+    nextWorkTaskSeq: 4,
+  };
+}
+
+const workTaskStore = globalThis.__bnwemsWorkTaskStore ?? (globalThis.__bnwemsWorkTaskStore = createInitialWorkTaskStore());
+
+export const mockWorkTasks = workTaskStore.tasks;
 
 export function nextId(
   kind: 'customer' | 'order' | 'quotation' | 'user' | 'catalogItem' | 'catalogCategory' | 'inventory'

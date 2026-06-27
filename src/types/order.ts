@@ -4,10 +4,10 @@ export type OrderStatus = 'DRAFT' | 'QUOTED' | 'CONFIRMED' | 'IN_PROGRESS' | 'CO
 
 // GET /api/v1/orders
 export interface Order {
-  id: string;
+  orderId: string;
   orderNumber: string;
   customerId: string;
-  eventDate: string;
+  eventStartDate: string;
   venueAddress: string;
   status: OrderStatus;
   createdAt: string;
@@ -22,6 +22,6 @@ export interface OrderDetail extends Order {
 // POST /api/v1/orders
 export interface CreateOrderPayload {
   customerId: string;
-  eventDate: string;
+  eventStartDate: string;
   venueAddress: string;
 }

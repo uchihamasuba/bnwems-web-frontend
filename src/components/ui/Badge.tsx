@@ -33,6 +33,8 @@ export const getStatusBadgeVariant = (status: string): BadgeVariant => {
     CONFIRMED: 'success',
     COMPLETED: 'success',
     DRAFT: 'neutral',
+    QUOTED: 'warning',
+    IN_PROGRESS: 'info',
     PENDING_SURVEY: 'warning',
     WAITING_FOR_DEPOSIT: 'warning',
     EXECUTING: 'info',

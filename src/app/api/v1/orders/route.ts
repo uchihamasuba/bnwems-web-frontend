@@ -20,7 +20,15 @@ export async function GET(request: NextRequest) {
 
   const totalCount = result.length;
   const start = (page - 1) * limit;
-  const paged = result.slice(start, start + limit);
+  const paged = result.slice(start, start + limit).map((o) => ({
+    orderId: o.id,
+    orderNumber: o.orderNumber,
+    customerId: o.customerId,
+    eventStartDate: o.eventDate,
+    venueAddress: o.venueAddress,
+    status: o.status,
+    createdAt: o.createdAt,
+  }));
 
   return mockSuccess(paged, { meta: { page, limit, totalCount } });
 }
@@ -29,11 +37,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const body = await request.json();
 
-  if (!body.customerId || !body.eventDate) {
+  if (!body.customerId || !body.eventStartDate) {
     return mockFailure('Required information is missing or invalid.', { status: 400, code: 'MSG-UC11-01' });
   }
-  if (new Date(body.eventDate).getTime() <= Date.now()) {
-    return mockFailure('eventDate must be in the future.', { status: 400, code: 'MSG-UC11-01' });
+  if (new Date(body.eventStartDate).getTime() <= Date.now()) {
+    return mockFailure('eventStartDate must be in the future.', { status: 400, code: 'MSG-UC11-01' });
   }
 
   const id = nextId('order');
@@ -42,7 +50,7 @@ export async function POST(request: NextRequest) {
     id,
     orderNumber: `ORD-${new Date().getFullYear()}-${id.split('-')[1].padStart(4, '0')}`,
     customerId: body.customerId as string,
-    eventDate: body.eventDate as string,
+    eventDate: body.eventStartDate as string,
     venueAddress: (body.venueAddress as string) ?? '',
     status: 'DRAFT' as const,
     createdAt: now,
@@ -50,5 +58,5 @@ export async function POST(request: NextRequest) {
   };
   mockOrders.push(order);
 
-  return mockSuccess({ id: order.id }, { message: 'Order created successfully.', status: 201 });
+  return mockSuccess({ orderId: order.id }, { message: 'Order created successfully.', status: 201 });
 }
