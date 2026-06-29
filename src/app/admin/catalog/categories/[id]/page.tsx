@@ -1,0 +1,258 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { ArrowLeft, Pencil, Search, Boxes, CheckCircle2, HardHat, Wrench } from 'lucide-react';
+import { catalogApiService } from '@/services/catalog.service';
+import { inventoryApiService } from '@/services/inventory.service';
+import { Table, TableColumn } from '@/components/ui/Table';
+import { Input } from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
+import { Badge, getStatusBadgeVariant } from '@/components/ui/Badge';
+import { CategoryFormModal, CategoryFormValues } from '@/components/catalog/CategoryFormModal';
+import { usePermission } from '@/hooks/usePermission';
+import { formatDate } from '@/utils/formatDate';
+import type { CatalogCategory, CatalogItem } from '@/types/catalog';
+import type { InventoryRow } from '@/types/inventory';
+
+interface EquipmentRow {
+  inventoryId: string;
+  itemId: string;
+  itemName: string;
+  totalQuantity: number;
+  availableQuantity: number;
+  checkedOutQuantity: number;
+  damagedQuantity: number;
+}
+
+function StatTile({
+  icon: Icon,
+  iconClassName,
+  value,
+  label,
+}: Readonly<{ icon: typeof Boxes; iconClassName: string; value: number; label: string }>) {
+  return (
+    <div className="flex flex-col items-center gap-2 rounded-xl bg-slate-50 p-4 text-center">
+      <span className={`flex h-9 w-9 items-center justify-center rounded-full ${iconClassName}`}>
+        <Icon className="h-4 w-4" />
+      </span>
+      <p className="text-2xl font-semibold text-slate-900">{value}</p>
+      <p className="text-xs text-slate-500">{label}</p>
+    </div>
+  );
+}
+
+export default function Page() {
+  const { id } = useParams<{ id: string }>();
+  const { can } = usePermission();
+  const canManage = can('master-data:manage');
+
+  const [category, setCategory] = useState<CatalogCategory | null>(null);
+  const [equipmentRows, setEquipmentRows] = useState<EquipmentRow[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [refreshToken, setRefreshToken] = useState(0);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag toggled before/after the fetch below, not a render loop
+    setIsLoading(true);
+    Promise.all([
+      catalogApiService.getCatalogCategory(id),
+      catalogApiService.getCatalogItems({ limit: 200 }),
+      inventoryApiService.getInventory({ limit: 500 }),
+    ])
+      .then(([categoryRes, itemsRes, inventoryRes]) => {
+        setCategory(categoryRes.data);
+
+        const categoryItems = (itemsRes.data as CatalogItem[]).filter((item) => item.categoryId === id);
+        const categoryItemIds = new Set(categoryItems.map((item) => item.id));
+        const itemsById = new Map(categoryItems.map((item) => [item.id, item]));
+
+        const rows: EquipmentRow[] = (inventoryRes.data as InventoryRow[])
+          .filter((row) => categoryItemIds.has(row.catalogItemId))
+          .map((row) => ({
+            inventoryId: row.id,
+            itemId: row.catalogItemId,
+            itemName: itemsById.get(row.catalogItemId)?.name ?? row.catalogItemId,
+            totalQuantity:
+              row.availableQuantity + row.reservedQuantity + row.checkedOutQuantity + row.damagedQuantity + row.lostQuantity,
+            availableQuantity: row.availableQuantity,
+            checkedOutQuantity: row.checkedOutQuantity,
+            damagedQuantity: row.damagedQuantity,
+          }));
+
+        setEquipmentRows(rows);
+      })
+      .finally(() => setIsLoading(false));
+  }, [id, refreshToken]);
+
+  const stats = useMemo(() => {
+    return equipmentRows.reduce(
+      (acc, row) => ({
+        total: acc.total + row.totalQuantity,
+        available: acc.available + row.availableQuantity,
+        inUse: acc.inUse + row.checkedOutQuantity,
+        maintenance: acc.maintenance + row.damagedQuantity,
+      }),
+      { total: 0, available: 0, inUse: 0, maintenance: 0 }
+    );
+  }, [equipmentRows]);
+
+  const filteredRows = useMemo(
+    () => equipmentRows.filter((row) => row.itemName.toLowerCase().includes(search.trim().toLowerCase())),
+    [equipmentRows, search]
+  );
+
+  const handleEditSubmit = async (values: CategoryFormValues, isActive?: boolean) => {
+    if (!category) return;
+    setIsSubmittingForm(true);
+    setFormError('');
+    try {
+      await catalogApiService.updateCatalogCategory(category.id, values);
+      if (isActive != null && isActive !== category.isActive) {
+        await catalogApiService.updateCatalogCategoryStatus(category.id, { isActive });
+      }
+      setIsEditOpen(false);
+      setRefreshToken((t) => t + 1);
+    } catch (err) {
+      setFormError(getErrorMessage(err, 'Cập nhật danh mục thất bại'));
+    } finally {
+      setIsSubmittingForm(false);
+    }
+  };
+
+  const equipmentColumns: TableColumn<EquipmentRow>[] = [
+    { key: 'itemId', label: 'Mã thiết bị' },
+    { key: 'itemName', label: 'Tên thiết bị' },
+    { key: 'totalQuantity', label: 'Tổng số lượng' },
+    { key: 'availableQuantity', label: 'Có sẵn' },
+    {
+      key: 'status',
+      label: 'Trạng thái',
+      render: (row) => (
+        <Badge variant={getStatusBadgeVariant(row.damagedQuantity > 0 ? 'MAINTENANCE' : 'ACTIVE')}>
+          {row.damagedQuantity > 0 ? 'Đang sửa chữa' : 'Đang hoạt động'}
+        </Badge>
+      ),
+    },
+  ];
+
+  if (isLoading || !category) {
+    return (
+      <div className="p-6">
+        <p className="text-sm text-slate-400">Đang tải...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/admin/catalog/categories"
+            aria-label="Quay lại"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-slate-500 hover:bg-slate-50"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <div>
+            <h1 className="text-xl font-semibold text-slate-900">{category.name}</h1>
+            <p className="mt-0.5 text-sm text-slate-500">Quản lý và theo dõi thiết bị trong danh mục này.</p>
+          </div>
+        </div>
+        {canManage && (
+          <Button onClick={() => setIsEditOpen(true)}>
+            <Pencil className="h-4 w-4" />
+            Sửa danh mục
+          </Button>
+        )}
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="rounded-xl bg-white p-5 shadow-sm lg:col-span-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-900">Thông tin cơ bản</h3>
+            <Badge variant={getStatusBadgeVariant(category.isActive ? 'ACTIVE' : 'INACTIVE')}>
+              {category.isActive ? 'Đang hoạt động' : 'Đã vô hiệu hóa'}
+            </Badge>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Mã danh mục</p>
+              <p className="mt-1 text-sm font-medium text-slate-800">{category.id}</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Tên danh mục</p>
+              <p className="mt-1 text-sm font-medium text-slate-800">{category.name}</p>
+            </div>
+            <div className="col-span-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Mô tả</p>
+              <p className="mt-1 text-sm text-slate-700">{category.description || '—'}</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Ngày tạo</p>
+              <p className="mt-1 text-sm font-medium text-slate-800">{formatDate(category.createdAt)}</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Cập nhật gần nhất</p>
+              <p className="mt-1 text-sm font-medium text-slate-800">{category.updatedAt ? formatDate(category.updatedAt) : '—'}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl bg-white p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-slate-900">Thống kê</h3>
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <StatTile icon={Boxes} iconClassName="bg-blue-100 text-blue-600" value={stats.total} label="Tổng số" />
+            <StatTile icon={CheckCircle2} iconClassName="bg-green-100 text-green-600" value={stats.available} label="Có sẵn" />
+            <StatTile icon={HardHat} iconClassName="bg-amber-100 text-amber-600" value={stats.inUse} label="Đang sử dụng" />
+            <StatTile icon={Wrench} iconClassName="bg-red-100 text-red-600" value={stats.maintenance} label="Đang sửa chữa" />
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6 rounded-xl bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-900">Danh sách thiết bị</h3>
+          <div className="w-64">
+            <Input
+              placeholder="Tìm thiết bị..."
+              icon={<Search className="h-4 w-4" />}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="mt-4">
+          <Table columns={equipmentColumns} rows={filteredRows} rowKey={(row) => row.inventoryId} />
+        </div>
+      </div>
+
+      <CategoryFormModal
+        isOpen={isEditOpen}
+        mode="edit"
+        category={category}
+        isSubmitting={isSubmittingForm}
+        errorMessage={formError}
+        onClose={() => {
+          setIsEditOpen(false);
+          setFormError('');
+        }}
+        onSubmit={handleEditSubmit}
+      />
+    </div>
+  );
+}
+
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err && typeof err === 'object' && 'response' in err) {
+    const response = (err as { response?: { data?: { message?: string } } }).response;
+    if (response?.data?.message) return response.data.message;
+  }
+  return fallback;
+}

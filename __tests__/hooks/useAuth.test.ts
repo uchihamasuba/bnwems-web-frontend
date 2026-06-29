@@ -5,6 +5,13 @@
 import { renderHook, act } from '@testing-library/react';
 import React from 'react';
 import { AuthProvider, useAuthContext } from '../../src/context/AuthContext';
+import { authApiService } from '../../src/services/auth.service';
+
+jest.mock('../../src/services/auth.service', () => ({
+  authApiService: { getProfile: jest.fn() },
+}));
+
+const mockGetProfile = authApiService.getProfile as jest.Mock;
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -20,7 +27,10 @@ const localStorageMock = (() => {
 Object.defineProperty(window, 'localStorage', { value: localStorageMock });
 
 describe('AuthContext — useAuthContext()', () => {
-  beforeEach(() => localStorageMock.clear());
+  beforeEach(() => {
+    localStorageMock.clear();
+    mockGetProfile.mockReset();
+  });
 
   const wrapper = ({ children }: { children: React.ReactNode }) =>
     React.createElement(AuthProvider, null, children);
@@ -42,9 +52,8 @@ describe('AuthContext — useAuthContext()', () => {
     });
 
     const mockUser = {
-      id: 1, username: 'manager_test', fullName: 'Test Manager',
-      email: 'test@test.com',
-      role: { id: 2, roleName: 'Manager', permissions: ['VIEW_ORDER_LIST'] },
+      userId: 'usr-1', username: 'manager_test', fullName: 'Test Manager',
+      role: { roleId: '2', roleName: 'Manager' as const }, status: 'active' as const,
     };
 
     act(() => {
@@ -62,8 +71,8 @@ describe('AuthContext — useAuthContext()', () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
     const mockUser = {
-      id: 1, username: 'test', fullName: 'Test', email: 't@t.com',
-      role: { id: 1, roleName: 'Admin', permissions: [] },
+      userId: 'usr-2', username: 'test', fullName: 'Test',
+      role: { roleId: '1', roleName: 'Admin' as const }, status: 'active' as const,
     };
 
     act(() => result.current.login('tok', mockUser));
@@ -73,5 +82,41 @@ describe('AuthContext — useAuthContext()', () => {
     expect(result.current.isAuthenticated).toBe(false);
     expect(result.current.user).toBeNull();
     expect(localStorageMock.getItem('bnwems_token')).toBeNull();
+  });
+
+  it('should keep session when a stored token is re-validated successfully via getProfile()', async () => {
+    localStorageMock.setItem('bnwems_token', 'old.token');
+    localStorageMock.setItem(
+      'bnwems_user',
+      JSON.stringify({ userId: 'usr-1', username: 'manager_test', fullName: 'Test Manager', role: { roleId: '2', roleName: 'Manager' }, status: 'active' })
+    );
+    mockGetProfile.mockResolvedValue({
+      success: true,
+      data: { userId: 'usr-1', username: 'manager_test', fullName: 'Test Manager', role: { roleId: '2', roleName: 'Manager' }, status: 'active' },
+    });
+
+    const { result } = renderHook(() => useAuthContext(), { wrapper });
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+
+    expect(mockGetProfile).toHaveBeenCalled();
+    expect(result.current.isAuthenticated).toBe(true);
+    expect(result.current.user?.username).toBe('manager_test');
+  });
+
+  it('should clear a stale token from a previous backend when getProfile() rejects', async () => {
+    localStorageMock.setItem('bnwems_token', 'stale.token.from.old.backend');
+    localStorageMock.setItem(
+      'bnwems_user',
+      JSON.stringify({ userId: 'usr-1', username: 'manager_test', fullName: 'Test Manager', role: { roleId: '2', roleName: 'Manager' }, status: 'active' })
+    );
+    mockGetProfile.mockRejectedValue(new Error('Request failed with status code 401'));
+
+    const { result } = renderHook(() => useAuthContext(), { wrapper });
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+
+    expect(result.current.isAuthenticated).toBe(false);
+    expect(result.current.user).toBeNull();
+    expect(localStorageMock.getItem('bnwems_token')).toBeNull();
+    expect(localStorageMock.getItem('bnwems_user')).toBeNull();
   });
 });
