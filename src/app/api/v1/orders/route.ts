@@ -7,13 +7,9 @@ export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
   const page = Number(params.get('page') ?? '1');
   const limit = Number(params.get('limit') ?? '20');
-  const search = (params.get('search') ?? '').trim().toLowerCase();
   const status = params.get('status');
 
   let result = [...mockOrders];
-  if (search) {
-    result = result.filter((o) => o.orderNumber.toLowerCase().includes(search));
-  }
   if (status) {
     result = result.filter((o) => o.status === status);
   }
@@ -22,10 +18,9 @@ export async function GET(request: NextRequest) {
   const start = (page - 1) * limit;
   const paged = result.slice(start, start + limit).map((o) => ({
     orderId: o.id,
-    orderNumber: o.orderNumber,
     customerId: o.customerId,
-    eventStartDate: o.eventDate,
-    venueAddress: o.venueAddress,
+    eventDate: o.eventDate,
+    eventLocation: o.eventLocation,
     status: o.status,
     createdAt: o.createdAt,
   }));
@@ -48,11 +43,10 @@ export async function POST(request: NextRequest) {
   const now = new Date().toISOString();
   const order = {
     id,
-    orderNumber: `ORD-${new Date().getFullYear()}-${id.split('-')[1].padStart(4, '0')}`,
     customerId: body.customerId as string,
     eventDate: body.eventStartDate as string,
-    venueAddress: (body.venueAddress as string) ?? '',
-    status: 'DRAFT' as const,
+    eventLocation: (body.venueAddress as string) ?? '',
+    status: 'draft' as const,
     createdAt: now,
     updatedAt: now,
   };

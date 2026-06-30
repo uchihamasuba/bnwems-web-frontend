@@ -24,11 +24,15 @@ api.interceptors.request.use(
   (error: AxiosError) => Promise.reject(error)
 );
 
-// Response interceptor — handle 401 globally
+// Response interceptor — handle 401 globally (session expiry on authenticated
+// requests). The login request itself also returns 401 on wrong credentials,
+// but that's a normal auth failure for the login page to show inline, not a
+// session expiry — must not trigger the hard redirect.
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-    if (error.response?.status === 401) {
+    const isLoginRequest = error.config?.url === '/auth/login';
+    if (error.response?.status === 401 && !isLoginRequest) {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('bnwems_token');
         localStorage.removeItem('bnwems_user');

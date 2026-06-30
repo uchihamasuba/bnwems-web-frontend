@@ -124,8 +124,8 @@ export default function Page() {
   );
 
   const upcomingEvents = orders
-    .filter((o) => new Date(o.eventStartDate) >= new Date())
-    .sort((a, b) => new Date(a.eventStartDate).getTime() - new Date(b.eventStartDate).getTime())
+    .filter((o) => new Date(o.eventDate) >= new Date())
+    .sort((a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime())
     .slice(0, 4);
 
   const handleApprove = async (changeRequestId: string, status: 'approved' | 'rejected') => {
@@ -144,7 +144,7 @@ export default function Page() {
         iconColor: 'blue',
         message: (
           <>
-            Đơn hàng <span className="font-medium text-slate-700">{order.orderNumber}</span> đang ở trạng thái{' '}
+            Đơn hàng <span className="font-medium text-slate-700">#{order.orderId}</span> đang ở trạng thái{' '}
             <span className="font-medium text-slate-700">{ORDER_STATUS_LABEL[order.status] ?? order.status}</span>.
           </>
         ),
@@ -161,7 +161,7 @@ export default function Page() {
         message: (
           <>
             Yêu cầu thay đổi thiết bị cho đơn{' '}
-            <span className="font-medium text-slate-700">{order?.orderNumber ?? cr.orderId}</span> đang chờ phê duyệt.
+            <span className="font-medium text-slate-700">#{order?.orderId ?? cr.orderId}</span> đang chờ phê duyệt.
           </>
         ),
       });
@@ -178,7 +178,7 @@ export default function Page() {
         message: (
           <>
             Công việc <span className="font-medium text-slate-700">{humanizeTaskType(task.taskType)}</span> cho đơn{' '}
-            <span className="font-medium text-slate-700">{order?.orderNumber ?? task.orderId}</span> đã hoàn thành.
+            <span className="font-medium text-slate-700">#{order?.orderId ?? task.orderId}</span> đã hoàn thành.
           </>
         ),
       });
@@ -228,7 +228,7 @@ export default function Page() {
           </p>
         </div>
         <Link
-          href="/manager/orders/create"
+          href="/manager/orders"
           className="inline-flex h-11 flex-shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white transition-colors duration-150 hover:bg-blue-700"
         >
           <Plus className="h-4 w-4" />
@@ -371,13 +371,13 @@ export default function Page() {
                       <CalendarDays className="h-5 w-5" />
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-slate-700">{order.orderNumber}</p>
+                      <p className="truncate text-sm font-semibold text-slate-700">#{order.orderId}</p>
                       <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-slate-400">
                         <MapPin className="h-3 w-3 flex-shrink-0" />
-                        {order.venueAddress}
+                        {order.eventLocation}
                       </p>
                     </div>
-                    <span className="flex-shrink-0 text-xs font-medium text-slate-500">{formatDate(order.eventStartDate)}</span>
+                    <span className="flex-shrink-0 text-xs font-medium text-slate-500">{formatDate(order.eventDate)}</span>
                   </Link>
                 ))}
               </div>

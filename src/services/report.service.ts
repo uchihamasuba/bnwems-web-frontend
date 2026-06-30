@@ -13,8 +13,8 @@ export const reportApiService = {
     return response.data;
   },
 
-  /** GET /api/v1/reports/revenue (UC 2.7) */
-  async getRevenueReport(params?: { startDate?: string; endDate?: string }) {
+  /** GET /api/v1/reports/revenue (UC 2.7). BR-07-01: startDate/endDate are required. */
+  async getRevenueReport(params: { startDate: string; endDate: string }) {
     const response = await api.get('/reports/revenue', { params });
     return response.data;
   },

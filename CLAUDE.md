@@ -145,7 +145,26 @@ Phong cách tham chiếu: dashboard quản trị tối giản, hiện đại, ch
 - **Website phải mobile-friendly**: mọi trang (không chỉ luồng check-in) đều phải responsive tốt trên mobile/tablet, không riêng desktop.
 - **Mọi section phải có animation khi scroll** (scroll-reveal khi section xuất hiện trong viewport): dùng thống nhất một thư viện animation cho toàn site (vd. Framer Motion), animation tinh tế/nhanh (không lặp lại quá đà), giữ đúng tinh thần tối giản ở mục 3 — tránh hiệu ứng nặng làm chậm trang hoặc gây rối mắt cho dashboard nhiều số liệu. ⚠️ **Hiện chưa có thư viện animation nào được cài** (`package.json` chưa có Framer Motion hay tương đương) và chưa trang nào có scroll-reveal — đây là việc còn thiếu, không phải đã làm; khi cần thêm, cài 1 thư viện duy nhất và dùng lại cho toàn site, không cài nhiều lib animation khác nhau.
 
-## 5. Workflow
+## 5. Backend liên quan (project khác — chỉ đọc/chạy, KHÔNG sửa)
+
+Backend của hệ thống này nằm ở **repo riêng, ngoài thư mục làm việc hiện tại**:
+
+- **Đường dẫn local**: `D:\bnwems-backend-api`
+- **Remote**: `https://github.com/uchihamasuba/bnwems-backend-api`, branch `develop`
+- **Stack**: Node.js (v22 LTS) + Express + TypeScript + **Prisma ORM** (MySQL), kiến trúc layered (`controllers/` → `services/` → Prisma).
+- **Port chạy thật**: `3001` (file `.env` của backend ghi `PORT=3001`, khớp `NEXT_PUBLIC_API_BASE_URL=http://localhost:3001/api/v1` trong `.env.local` của frontend này). `.env.example` của backend ghi `3000` chỉ là giá trị mẫu, không phải giá trị đang chạy.
+- **CORS**: backend chỉ cho phép origin `http://localhost:3000` (đúng port dev của frontend này).
+- **Khởi động**: `npm run dev` (ts-node, auto-reload) trong `D:\bnwems-backend-api`. Dấu hiệu chạy thành công: `Server running on port 3001`.
+- **Log**: backend **chỉ log ra stdout/stderr** qua `console.log`/`console.error` thuần (`src/server.ts`, `src/middlewares/error.middleware.ts`) — **không có file log, không dùng morgan/winston**. Muốn xem log khi debug, phải có tiến trình `npm run dev` đang chạy và đọc output trực tiếp từ tiến trình đó (chạy nền + theo dõi output) — log biến mất khi tiến trình dừng, không truy hồi lại được.
+- **Xem DB trực tiếp**: `npx prisma studio` trong backend repo → `http://localhost:5555`.
+- **Tài khoản seed mặc định**: theo `prisma/seed.ts` của backend (vd SĐT `0987654321` / mật khẩu `password123`) — tham khảo file đó nếu cần tài khoản test, không tự đoán.
+
+### Quy tắc bắt buộc khi debug qua backend
+- **Tuyệt đối không sửa code trong `bnwems-backend-api`** — đây là repo của người khác/ngoài phạm vi được giao. Chỉ được: chạy (`npm run dev` / `npm test` / `prisma studio`), đọc code để hiểu hành vi thật của API, đọc log console, query DB qua Prisma Studio để xác minh dữ liệu.
+- Khi nghi ngờ lỗi nằm ở backend (response sai field, status code không khớp doc, lỗi 500...): chạy backend, tái hiện lỗi, đọc log/stack trace, đối chiếu với `docs/api/` ở repo frontend này — rồi **báo cáo lại cho người dùng** (mô tả lỗi, bước tái hiện, log liên quan) thay vì tự sửa source backend.
+- Nếu cần backend chạy liên tục để frontend gọi API trong lúc debug, khởi chạy `npm run dev` của backend ở tiến trình nền (background) và theo dõi output của tiến trình đó để lấy log theo thời gian thực.
+
+## 6. Workflow
 
 - Trước khi code: xác nhận lại phạm vi thay đổi nếu yêu cầu chưa rõ ràng (đặc biệt với màn hình tài chính/công nợ — sai số liệu ảnh hưởng nghiệp vụ thật).
 - Khi thêm màn hình mới: tham chiếu phong cách ở mục 3, tái dùng component có sẵn trước khi tạo mới.

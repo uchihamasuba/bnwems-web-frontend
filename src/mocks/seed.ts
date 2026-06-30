@@ -51,6 +51,7 @@ declare global {
   var __bnwemsWarehouseHistoryStore: WarehouseHistoryMockStore | undefined;
   var __bnwemsChangeRequestStore: ChangeRequestMockStore | undefined;
   var __bnwemsWorkTaskStore: WorkTaskMockStore | undefined;
+  var __bnwemsOrderAssignmentStore: OrderAssignmentMockStore | undefined;
 }
 
 function createInitialUserStore(): UserMockStore {
@@ -475,15 +476,14 @@ export function nextWarehouseHistoryId(): string {
   return `wh-tx-${warehouseHistoryStore.nextHistorySeq++}`;
 }
 
-// docs/api/09-orders.md (UC 2.11)
-export type OrderStatus = 'DRAFT' | 'QUOTED' | 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED';
+// docs/api/09-orders.md (UC 2.11) — status/field theo backend thật, xem comment ở types/order.ts
+export type OrderStatus = 'draft' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
 
 export interface MockOrder {
   id: string;
-  orderNumber: string;
   customerId: string;
   eventDate: string;
-  venueAddress: string;
+  eventLocation: string;
   status: OrderStatus;
   createdAt: string;
   updatedAt: string;
@@ -499,51 +499,46 @@ function createInitialOrderStore(): OrderMockStore {
     orders: [
       {
         id: 'order-1',
-        orderNumber: 'ORD-2026-0001',
         customerId: 'cust-1',
         eventDate: '2026-07-01T00:00:00Z',
-        venueAddress: '789 Cách Mạng Tháng 8',
-        status: 'CONFIRMED',
+        eventLocation: '789 Cách Mạng Tháng 8',
+        status: 'confirmed',
         createdAt: '2026-06-10T08:00:00Z',
         updatedAt: '2026-06-15T09:00:00Z',
       },
       {
         id: 'order-2',
-        orderNumber: 'ORD-2026-0002',
         customerId: 'cust-2',
         eventDate: '2026-07-20T00:00:00Z',
-        venueAddress: '12 Nguyễn Huệ, Q1',
-        status: 'IN_PROGRESS',
+        eventLocation: '12 Nguyễn Huệ, Q1',
+        status: 'in_progress',
         createdAt: '2026-06-12T08:00:00Z',
         updatedAt: '2026-06-18T09:00:00Z',
       },
       {
         id: 'order-3',
-        orderNumber: 'ORD-2026-0003',
         customerId: 'cust-1',
         eventDate: '2026-05-10T00:00:00Z',
-        venueAddress: '56 Trần Hưng Đạo, Q5',
-        status: 'COMPLETED',
+        eventLocation: '56 Trần Hưng Đạo, Q5',
+        status: 'completed',
         createdAt: '2026-04-01T08:00:00Z',
         updatedAt: '2026-05-12T09:00:00Z',
       },
       {
         id: 'order-4',
-        orderNumber: 'ORD-2026-0004',
         customerId: 'cust-2',
         eventDate: '2026-08-05T00:00:00Z',
-        venueAddress: '200 Điện Biên Phủ, Bình Thạnh',
-        status: 'QUOTED',
+        eventLocation: '200 Điện Biên Phủ, Bình Thạnh',
+        status: 'cancelled',
         createdAt: '2026-06-20T08:00:00Z',
         updatedAt: '2026-06-20T08:00:00Z',
       },
       {
         id: 'order-5',
-        orderNumber: 'ORD-2026-0005',
         customerId: 'cust-1',
         eventDate: '2026-09-01T00:00:00Z',
-        venueAddress: '8 Lý Tự Trọng, Q1',
-        status: 'DRAFT',
+        eventLocation: '8 Lý Tự Trọng, Q1',
+        status: 'draft',
         createdAt: '2026-06-22T08:00:00Z',
         updatedAt: '2026-06-22T08:00:00Z',
       },
@@ -720,6 +715,39 @@ function createInitialWorkTaskStore(): WorkTaskMockStore {
         scheduledEnd: todayAt(18, 0),
         status: 'pending',
       },
+      // order-2 (order demo của settlement-preview) — đủ task để tab "Khảo sát & Nhân sự" khớp mockup.
+      {
+        id: 'task-s2',
+        orderId: 'order-2',
+        taskType: 'survey',
+        scheduledStart: '2026-07-05T07:00:00Z',
+        scheduledEnd: '2026-07-05T10:00:00Z',
+        status: 'completed',
+      },
+      {
+        id: 'task-t2',
+        orderId: 'order-2',
+        taskType: 'transport',
+        scheduledStart: '2026-07-20T00:00:00Z',
+        scheduledEnd: '2026-07-20T01:30:00Z',
+        status: 'completed',
+      },
+      {
+        id: 'task-i2',
+        orderId: 'order-2',
+        taskType: 'installation',
+        scheduledStart: '2026-07-20T01:30:00Z',
+        scheduledEnd: '2026-07-20T05:00:00Z',
+        status: 'in_progress',
+      },
+      {
+        id: 'task-c2',
+        orderId: 'order-2',
+        taskType: 'collection',
+        scheduledStart: '2026-07-20T15:00:00Z',
+        scheduledEnd: '2026-07-20T17:00:00Z',
+        status: 'pending',
+      },
     ],
     nextWorkTaskSeq: 4,
   };
@@ -728,6 +756,176 @@ function createInitialWorkTaskStore(): WorkTaskMockStore {
 const workTaskStore = globalThis.__bnwemsWorkTaskStore ?? (globalThis.__bnwemsWorkTaskStore = createInitialWorkTaskStore());
 
 export const mockWorkTasks = workTaskStore.tasks;
+
+// docs/api/10-survey-assignment.md (UC 2.12) — GET /tasks/:id/survey-report.
+// surveyedBy KHÔNG có trong response thật (xem docs/more-require.md mục o) — chỉ để hiển thị tên KSV.
+export interface MockSurveyReport {
+  workTaskId: string;
+  notes: string;
+  evidences: { fileUrl: string }[];
+  submittedAt: string;
+  surveyedBy?: string;
+}
+
+export const mockSurveyReports: MockSurveyReport[] = [
+  {
+    workTaskId: 'task-s2', // survey task của order-2
+    notes: 'Cổng vào hẹp, cần xe tải nhỏ trung chuyển. Điểm treo Rigging ổn định, tải trọng tối đa 500kg/điểm.',
+    evidences: [
+      { fileUrl: 'https://picsum.photos/seed/survey-a/240/180' },
+      { fileUrl: 'https://picsum.photos/seed/survey-b/240/180' },
+      { fileUrl: 'https://picsum.photos/seed/survey-c/240/180' },
+      { fileUrl: 'https://picsum.photos/seed/survey-d/240/180' },
+    ],
+    submittedAt: '2026-07-05T07:30:00Z',
+    surveyedBy: 'Nguyễn Văn An',
+  },
+];
+
+// ===== MOCK-ONLY: Phân công nhân sự (survey + execution) =====
+// Backend thật chỉ có POST /tasks/:id/assignments — KHÔNG có GET đọc lại phân công, không lưu
+// field-status theo từng staff (xem docs/more-require.md mục n, p). Store dùng globalThis để giữ
+// state qua các lần recompile dev (giống các store khác) và để mock POST ghi vào được.
+export type MockFieldStatus = 'pending' | 'ready' | 'in_setup' | 'completed';
+
+export interface MockAssignmentMember {
+  userId: string;
+  fullName: string;
+  assignedRole: string;
+  fieldStatus?: MockFieldStatus;
+}
+
+export interface MockAssignmentGroup {
+  taskId: string;
+  scheduledStart: string;
+  scheduledEnd: string;
+  shiftLabel?: string;
+  members: MockAssignmentMember[];
+}
+
+export interface MockOrderAssignment {
+  orderId: string;
+  survey: MockAssignmentGroup | null;
+  execution: MockAssignmentGroup | null;
+}
+
+interface OrderAssignmentMockStore {
+  byOrder: MockOrderAssignment[];
+}
+
+function createInitialOrderAssignmentStore(): OrderAssignmentMockStore {
+  return {
+    byOrder: [
+      {
+        orderId: 'order-2',
+        survey: {
+          taskId: 'task-s2',
+          scheduledStart: '2026-07-05T07:00:00Z',
+          scheduledEnd: '2026-07-05T10:00:00Z',
+          members: [
+            { userId: 'usr-3', fullName: 'Nguyễn Văn An', assignedRole: 'Khảo sát viên', fieldStatus: 'completed' },
+          ],
+        },
+        execution: {
+          taskId: 'task-i2',
+          scheduledStart: '2026-07-20T01:30:00Z',
+          scheduledEnd: '2026-07-20T05:00:00Z',
+          shiftLabel: 'Ca sáng (06:00 - 12:00)',
+          members: [
+            { userId: 'usr-3', fullName: 'Trần Minh Quân', assignedRole: 'Trưởng nhóm', fieldStatus: 'ready' },
+            { userId: 'usr-4', fullName: 'Lê Hoàng Nam', assignedRole: 'Kỹ thuật âm thanh', fieldStatus: 'in_setup' },
+            { userId: 'usr-4', fullName: 'Vũ Đình Tú', assignedRole: 'Kỹ thuật ánh sáng', fieldStatus: 'in_setup' },
+          ],
+        },
+      },
+    ],
+  };
+}
+
+const orderAssignmentStore =
+  globalThis.__bnwemsOrderAssignmentStore ??
+  (globalThis.__bnwemsOrderAssignmentStore = createInitialOrderAssignmentStore());
+
+export const mockOrderAssignments = orderAssignmentStore.byOrder;
+
+// Ghi phân công từ mock POST /tasks/:id/assignments: tìm group theo taskId.
+// Group khảo sát (1 KSV) → thay thế ("Đổi người"); group thi công → nối thêm ("+ Phân công").
+export function applyAssignmentMembers(taskId: string, members: MockAssignmentMember[]): boolean {
+  for (const entry of orderAssignmentStore.byOrder) {
+    if (entry.survey?.taskId === taskId) {
+      entry.survey.members = members;
+      return true;
+    }
+    if (entry.execution?.taskId === taskId) {
+      entry.execution.members = [...entry.execution.members, ...members];
+      return true;
+    }
+  }
+  return false;
+}
+
+// ===== MOCK-ONLY: Settlement preview & breakdown hỏng/mất =====
+// Lý do tồn tại: backend thật KHÔNG có GET cho Settlement (theo id hoặc orderId) và KHÔNG có GET
+// cho danh sách Damage-Loss theo orderId (đọc trực tiếp
+// D:\bnwems-backend-api\src\routes\{settlement,damageloss}.route.ts — chỉ có POST/PUT, không
+// GET). Backend cũng không lưu lại field "responsible" (khách đền bù hay trừ lương nhân viên)
+// khi ghi nhận damage-loss. Dữ liệu dưới đây chỉ phục vụ hiển thị tab "Thanh toán & Quyết toán"
+// cho tới khi backend bổ sung — xem docs/more-require.md mục (a)(b)(c). KHÔNG dùng cho mục đích
+// khác, không mutate qua route handler nào nên không cần globalThis store như các mock khác.
+export interface MockSettlementSurcharge {
+  reason: string;
+  amount: number;
+}
+
+export interface MockSettlementDamageLine {
+  damageLossItemId: string;
+  icon: string;
+  itemName: string;
+  amount: number;
+  responsible: 'customer' | 'staff_wage_deduction';
+  responsibleStaffName?: string;
+}
+
+export interface MockSettlementPreview {
+  orderId: string;
+  originalValue: number;
+  additionalFees: number;
+  discount: number;
+  totalPaid: number;
+  surchargeLines: MockSettlementSurcharge[];
+  damageLines: MockSettlementDamageLine[];
+}
+
+export const mockSettlementPreviews: MockSettlementPreview[] = [
+  {
+    orderId: 'order-2', // order đang in_progress — khớp trạng thái "Đang xử lý" của mockup gốc
+    originalValue: 50_000_000,
+    additionalFees: 2_500_000,
+    discount: 500_000,
+    totalPaid: 25_000_000,
+    surchargeLines: [
+      { reason: 'Gia hạn thời gian (2h)', amount: 1_500_000 },
+      { reason: 'Thêm 5 set teabreak', amount: 1_000_000 },
+    ],
+    damageLines: [
+      {
+        damageLossItemId: 'dmg-1',
+        icon: 'WineOff',
+        itemName: 'Vỡ 3 ly thủy tinh',
+        amount: 450_000,
+        responsible: 'customer',
+      },
+      {
+        damageLossItemId: 'dmg-2',
+        icon: 'Mic',
+        itemName: 'Mất 1 micro không dây',
+        amount: 800_000,
+        responsible: 'staff_wage_deduction',
+        responsibleStaffName: 'Vũ Đình Tú',
+      },
+    ],
+  },
+];
 
 export function nextId(
   kind: 'customer' | 'order' | 'quotation' | 'user' | 'catalogItem' | 'catalogCategory' | 'inventory'

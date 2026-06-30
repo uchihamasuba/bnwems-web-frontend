@@ -2,7 +2,18 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Search, Eye, ShoppingCart, FileText, Settings2, CheckCircle2, Download } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import {
+  Plus,
+  Eye,
+  ShoppingCart,
+  Inbox,
+  Settings2,
+  CheckCircle2,
+  Download,
+  RefreshCw,
+  Search,
+} from 'lucide-react';
 import { orderApiService } from '@/services/order.service';
 import { customerApiService } from '@/services/customer.service';
 import { Table, TableColumn } from '@/components/ui/Table';
@@ -10,57 +21,94 @@ import { Pagination } from '@/components/ui/Pagination';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
-import { Badge, getStatusBadgeVariant } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
 import DashboardStats, { KpiCardItem } from '@/components/reports/DashboardStats';
+import CreateOrderModal from '@/components/orders/CreateOrderModal';
 import { usePagination } from '@/hooks/usePagination';
-import { useDebounce } from '@/hooks/useDebounce';
 import { formatDate } from '@/utils/formatDate';
 import { ORDER_STATUS_LABEL } from '@/constants/order-status';
 import type { Order } from '@/types/order';
 import type { Customer } from '@/types/customer';
 
+// ---------------------------------------------------------------------------
+// MOCK helpers — xóa và dùng field thật khi backend implement
+// (xem docs/more-require.md mục t, u, s, v, w)
+// ---------------------------------------------------------------------------
+const EVENT_TYPES = ['Tiệc cưới', 'Sự kiện công ty', 'Sinh nhật', 'Khai trương', 'Hội nghị'];
+
+function mockOrderNumber(order: Order): string {
+  if (order.orderNumber) return order.orderNumber;
+  const year = new Date(order.createdAt).getFullYear();
+  return `ORD-${year}-${String(order.orderId).padStart(4, '0')}`;
+}
+
+function mockEventType(order: Order): string {
+  if (order.eventType) return order.eventType;
+  return EVENT_TYPES[parseInt(order.orderId) % EVENT_TYPES.length];
+}
+
+function mockEventEndDate(order: Order): string {
+  if (order.eventEndDate) return order.eventEndDate;
+  const d = new Date(order.eventDate);
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().split('T')[0];
+}
+
+const STATUS_TEXT_COLOR: Record<string, string> = {
+  draft:              'text-slate-500',
+  confirmed:          'text-blue-600',
+  in_progress:        'text-amber-600',
+  completed:          'text-green-600',
+  cancelled:          'text-red-500',
+  deposit_paid:       'text-green-600',
+  settlement_pending: 'text-amber-600',
+};
+// ---------------------------------------------------------------------------
+
 const STATUS_OPTIONS = Object.entries(ORDER_STATUS_LABEL).map(([value, label]) => ({ value, label }));
 
 interface OrderCounts {
   total: number;
-  confirmed: number;
+  newDraft: number;
   inProgress: number;
   completed: number;
 }
 
 export default function Page() {
+  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [counts, setCounts] = useState<OrderCounts | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
 
-  const [search, setSearch] = useState('');
-  const debouncedSearch = useDebounce(search, 400);
   const [statusFilter, setStatusFilter] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  // searchValue chỉ controlled — chưa gửi lên API vì backend chưa có cột orderNumber
+  // (xem more-require.md mục t). Bỏ disabled và truyền search param khi backend implement.
+  const [searchValue, setSearchValue] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const { pagination, setPage, updatePagination } = usePagination(10);
 
-  // Danh sách khách hàng để ghép tên/email vào bảng đơn hàng — GET /orders chỉ trả customerId,
-  // không có endpoint lấy nhiều customer theo danh sách id nên lấy 1 trang lớn rồi map ở client
-  // (giống pattern orderById ở manager/dashboard).
+  // Danh sách khách hàng để ghép tên/phone vào bảng — GET /orders chỉ trả customerId,
+  // không có endpoint lấy nhiều customer theo id nên lấy 1 trang lớn rồi map ở client.
   useEffect(() => {
     customerApiService.getCustomers({ limit: 100 }).then((res) => setCustomers(res.data));
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag toggled before/after the fetch below, not a render loop
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsLoading(true);
     orderApiService
       .getOrders({
         page: pagination.currentPage,
         limit: pagination.limit,
-        search: debouncedSearch || undefined,
         status: statusFilter || undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
+        // search: searchValue || undefined, // bật lại khi backend có cột orderNumber (mục t)
       })
       .then((res) => {
         setOrders(res.data);
@@ -71,21 +119,19 @@ export default function Page() {
       })
       .finally(() => setIsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pagination.currentPage, pagination.limit, debouncedSearch, statusFilter, startDate, endDate]);
+  }, [pagination.currentPage, pagination.limit, statusFilter, startDate, endDate, refreshKey]);
 
-  // KPI tổng quan không phụ thuộc bộ lọc bảng — đếm theo status có sẵn trong enum
-  // (docs/api/09-orders.md chưa có endpoint thống kê riêng, % tăng/giảm cũng chưa có nguồn
-  // dữ liệu nên không hiển thị badge thay đổi thay vì bịa số liệu).
+  // KPI — đếm riêng theo status, không phụ thuộc bộ lọc bảng
   useEffect(() => {
     Promise.all([
       orderApiService.getOrders({ limit: 1 }),
-      orderApiService.getOrders({ limit: 1, status: 'CONFIRMED' }),
-      orderApiService.getOrders({ limit: 1, status: 'IN_PROGRESS' }),
-      orderApiService.getOrders({ limit: 1, status: 'COMPLETED' }),
-    ]).then(([all, confirmed, inProgress, completed]) => {
+      orderApiService.getOrders({ limit: 1, status: 'draft' }),
+      orderApiService.getOrders({ limit: 1, status: 'in_progress' }),
+      orderApiService.getOrders({ limit: 1, status: 'completed' }),
+    ]).then(([all, newDraft, inProgress, completed]) => {
       setCounts({
         total: all.meta.totalCount,
-        confirmed: confirmed.meta.totalCount,
+        newDraft: newDraft.meta.totalCount,
         inProgress: inProgress.meta.totalCount,
         completed: completed.meta.totalCount,
       });
@@ -96,24 +142,45 @@ export default function Page() {
 
   const kpiItems: KpiCardItem[] = [
     { label: 'Tổng đơn hàng', value: counts?.total ?? '—', icon: ShoppingCart, iconColor: 'blue' },
-    { label: 'Đã xác nhận', value: counts?.confirmed ?? '—', icon: FileText, iconColor: 'amber' },
-    { label: 'Đang thực hiện', value: counts?.inProgress ?? '—', icon: Settings2, iconColor: 'blue' },
+    { label: 'Đơn mới', value: counts?.newDraft ?? '—', icon: Inbox, iconColor: 'blue' },
+    { label: 'Đang thực hiện', value: counts?.inProgress ?? '—', icon: Settings2, iconColor: 'amber' },
     { label: 'Đã hoàn thành', value: counts?.completed ?? '—', icon: CheckCircle2, iconColor: 'green' },
   ];
 
+  const handleRefresh = () => {
+    setRefreshKey((k) => k + 1);
+    setPage(1);
+  };
+
   const handleExportCsv = () => {
-    const header = ['Mã đơn hàng', 'Khách hàng', 'Địa điểm', 'Ngày tổ chức', 'Trạng thái'];
+    const header = [
+      'Mã đơn hàng',
+      'Khách hàng',
+      'SĐT',
+      'Loại sự kiện',
+      'Ngày tổ chức',
+      'Ngày kết thúc',
+      'Địa chỉ',
+      'Trạng thái',
+      'Ngày tạo',
+    ];
     const rows = orders.map((o) => {
       const customer = customerById.get(o.customerId);
       return [
-        o.orderNumber,
-        customer?.fullName ?? o.customerId,
-        o.venueAddress,
-        formatDate(o.eventStartDate),
+        mockOrderNumber(o),
+        customer?.fullName ?? `KH #${o.customerId}`,
+        customer?.phone ?? '',
+        mockEventType(o),
+        formatDate(o.eventDate),
+        formatDate(mockEventEndDate(o)),
+        o.eventLocation,
         ORDER_STATUS_LABEL[o.status] ?? o.status,
+        formatDate(o.createdAt),
       ];
     });
-    const csv = [header, ...rows].map((r) => r.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n');
+    const csv = [header, ...rows]
+      .map((r) => r.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(','))
+      .join('\n');
     const blob = new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -125,11 +192,14 @@ export default function Page() {
 
   const columns: TableColumn<Order>[] = [
     {
-      key: 'orderNumber',
+      key: 'orderId',
       label: 'Mã đơn hàng',
       render: (row) => (
-        <Link href={`/manager/orders/${row.orderId}`} className="font-medium text-blue-600 hover:underline">
-          #{row.orderNumber}
+        <Link
+          href={`/manager/orders/${row.orderId}`}
+          className="font-mono text-sm font-medium text-blue-600 hover:underline"
+        >
+          {mockOrderNumber(row)}
         </Link>
       ),
     },
@@ -140,27 +210,62 @@ export default function Page() {
         const customer = customerById.get(row.customerId);
         return (
           <div className="flex items-center gap-2.5">
-            <Avatar name={customer?.fullName ?? row.customerId} size="sm" />
+            <Avatar name={customer?.fullName ?? String(row.customerId)} size="sm" />
             <div className="min-w-0">
               <p className="truncate font-medium text-slate-700">{customer?.fullName ?? `KH #${row.customerId}`}</p>
-              {customer?.email && <p className="truncate text-xs text-slate-400">{customer.email}</p>}
+              {customer?.phone && <p className="truncate text-xs text-slate-400">{customer.phone}</p>}
             </div>
           </div>
         );
       },
     },
-    { key: 'venueAddress', label: 'Địa điểm tổ chức' },
     {
-      key: 'eventStartDate',
+      key: 'eventType',
+      label: 'Loại sự kiện',
+      render: (row) => (
+        // MOCK — xóa mock khi backend trả eventType thật (more-require.md mục u)
+        <span className="text-sm font-medium text-indigo-600">
+          {mockEventType(row)}
+        </span>
+      ),
+    },
+    {
+      key: 'eventDate',
       label: 'Ngày tổ chức',
-      render: (row) => formatDate(row.eventStartDate),
+      render: (row) => <span className="whitespace-nowrap text-sm">{formatDate(row.eventDate)}</span>,
+    },
+    {
+      key: 'eventEndDate',
+      label: 'Ngày kết thúc',
+      render: (row) => (
+        // MOCK — xóa mock khi backend trả eventEndDate thật (more-require.md mục s)
+        <span className="whitespace-nowrap text-sm italic text-slate-400">
+          {formatDate(mockEventEndDate(row))}
+        </span>
+      ),
+    },
+    {
+      key: 'eventLocation',
+      label: 'Địa chỉ',
+      render: (row) => (
+        <span className="max-w-[180px] truncate text-sm text-slate-600" title={row.eventLocation}>
+          {row.eventLocation}
+        </span>
+      ),
     },
     {
       key: 'status',
       label: 'Trạng thái',
       render: (row) => (
-        <Badge variant={getStatusBadgeVariant(row.status)}>{ORDER_STATUS_LABEL[row.status] ?? row.status}</Badge>
+        <span className={`text-sm font-medium ${STATUS_TEXT_COLOR[row.status] ?? 'text-slate-500'}`}>
+          {ORDER_STATUS_LABEL[row.status] ?? row.status}
+        </span>
       ),
+    },
+    {
+      key: 'createdAt',
+      label: 'Ngày tạo',
+      render: (row) => <span className="whitespace-nowrap text-sm text-slate-500">{formatDate(row.createdAt)}</span>,
     },
     {
       key: 'actions',
@@ -180,58 +285,41 @@ export default function Page() {
 
   return (
     <div className="p-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Quản lý đơn hàng</h1>
           <p className="mt-1 text-sm text-slate-500">Theo dõi và điều phối tất cả các đơn hàng sự kiện trong hệ thống.</p>
         </div>
-        <Link href="/manager/orders/create">
-          <Button>
-            <Plus className="h-4 w-4" />
-            Tạo đơn hàng mới
-          </Button>
-        </Link>
+        <Button onClick={() => setIsCreateOpen(true)}>
+          <Plus className="h-4 w-4" />
+          Tạo đơn hàng mới
+        </Button>
       </div>
 
+      {/* KPI */}
       <div className="mt-6">
         <DashboardStats items={kpiItems} />
       </div>
 
+      {/* Filter + Table card */}
       <div className="mt-6 rounded-xl bg-white p-4 shadow-sm">
+        {/* Filter bar */}
         <div className="flex flex-wrap items-end gap-3">
-          <div className="w-64">
-            <Input
+          {/* Search — disabled cho đến khi backend có cột orderNumber (more-require.md mục t) */}
+          <div className="relative w-56">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchValue}
+              onChange={(e) => setSearchValue(e.target.value)}
               placeholder="Tìm theo mã đơn hàng..."
-              icon={<Search className="h-4 w-4" />}
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
+              disabled
+              title="Tính năng đang phát triển — backend chưa có cột orderNumber"
+              className="w-full cursor-not-allowed rounded-md border border-slate-200 bg-slate-50 py-2 pl-8 pr-3 text-sm text-slate-400 outline-none"
             />
           </div>
-          <div className="w-44">
-            <Input
-              type="date"
-              label="Từ ngày"
-              value={startDate}
-              onChange={(e) => {
-                setStartDate(e.target.value);
-                setPage(1);
-              }}
-            />
-          </div>
-          <div className="w-44">
-            <Input
-              type="date"
-              label="Đến ngày"
-              value={endDate}
-              onChange={(e) => {
-                setEndDate(e.target.value);
-                setPage(1);
-              }}
-            />
-          </div>
+
           <div className="w-48">
             <Select
               value={statusFilter}
@@ -242,17 +330,58 @@ export default function Page() {
               options={[{ value: '', label: 'Tất cả trạng thái' }, ...STATUS_OPTIONS]}
             />
           </div>
-          <Button variant="secondary" onClick={handleExportCsv} disabled={orders.length === 0}>
-            <Download className="h-4 w-4" />
-            Xuất file
-          </Button>
+
+          <div className="w-40">
+            <Input
+              type="date"
+              label="Từ ngày"
+              value={startDate}
+              onChange={(e) => {
+                setStartDate(e.target.value);
+                setPage(1);
+              }}
+            />
+          </div>
+          <div className="w-40">
+            <Input
+              type="date"
+              label="Đến ngày"
+              value={endDate}
+              onChange={(e) => {
+                setEndDate(e.target.value);
+                setPage(1);
+              }}
+            />
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="secondary" onClick={handleRefresh} title="Tải lại dữ liệu">
+              <RefreshCw className="h-4 w-4" />
+              Làm mới
+            </Button>
+            <Button variant="secondary" onClick={handleExportCsv} disabled={orders.length === 0}>
+              <Download className="h-4 w-4" />
+              Xuất file
+            </Button>
+          </div>
         </div>
 
-        <div className="mt-4">
+        {/* Table — cuộn ngang vì có nhiều cột */}
+        <div className="mt-4 overflow-x-auto">
           <Table columns={columns} rows={orders} rowKey={(row) => row.orderId} isLoading={isLoading} />
         </div>
         <Pagination pagination={pagination} onPageChange={setPage} />
       </div>
+
+      <CreateOrderModal
+        isOpen={isCreateOpen}
+        customers={customers}
+        onClose={() => setIsCreateOpen(false)}
+        onCreated={(orderId) => {
+          setIsCreateOpen(false);
+          router.push(`/manager/orders/${orderId}`);
+        }}
+      />
     </div>
   );
 }

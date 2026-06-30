@@ -204,7 +204,7 @@ export default function ScheduleTimeline({
                       </div>
                       <p className="mt-1.5 flex items-center gap-1 text-xs text-slate-500">
                         <ClipboardList className="h-3 w-3 flex-shrink-0" />
-                        Đơn {order?.orderNumber ?? task.orderId}
+                        Đơn #{order?.orderId ?? task.orderId}
                       </p>
 
                       <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-200/70">

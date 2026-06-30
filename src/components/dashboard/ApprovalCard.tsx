@@ -35,7 +35,7 @@ export default function ApprovalCard({ changeRequest, order, onApprove, onReject
     >
       <div className="flex items-center justify-between">
         <span className="rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-600">
-          Đơn {order?.orderNumber ?? changeRequest.orderId}
+          Đơn #{order?.orderId ?? changeRequest.orderId}
         </span>
         <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
           {TYPE_LABEL[changeRequest.type]}

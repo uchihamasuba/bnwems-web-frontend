@@ -12,10 +12,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   return mockSuccess({
     orderId: order.id,
-    orderNumber: order.orderNumber,
     customerId: order.customerId,
-    eventStartDate: order.eventDate,
-    venueAddress: order.venueAddress,
+    eventDate: order.eventDate,
+    eventLocation: order.eventLocation,
     status: order.status,
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
