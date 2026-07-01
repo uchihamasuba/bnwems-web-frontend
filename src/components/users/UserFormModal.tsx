@@ -52,7 +52,7 @@ export function UserFormModal({
     if (isOpen) {
       setValues(
         mode === 'edit' && user
-          ? { username: user.username, password: '', fullName: user.fullName, role: user.role }
+          ? { username: user.username, password: '', fullName: user.fullName, role: typeof user.role === 'object' ? (user.role as any).roleName : user.role }
           : EMPTY_VALUES
       );
       setConfirmPassword('');

@@ -6,6 +6,7 @@ import { ProfileLayout } from '@/components/profile/ProfileLayout';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { authApiService } from '@/services/auth.service';
+import { uploadApiService } from '@/services/upload.service';
 import type { AuthProfile } from '@/types/auth';
 
 interface ProfileViewProps {
@@ -16,7 +17,11 @@ interface ProfileViewProps {
 export function ProfileView({ infoHref, securityHref }: Readonly<ProfileViewProps>) {
   const [profile, setProfile] = useState<AuthProfile | null>(null);
   const [bio, setBio] = useState('');
-  const [avatarUrl, setAvatarUrl] = useState('https://images.unsplash.com/photo-1560250097-0b93528c311a?ixlib=rb-4.0.3&auto=format&fit=crop&w=256&q=80'); // Mocked avatar
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -31,6 +36,10 @@ export function ProfileView({ infoHref, securityHref }: Readonly<ProfileViewProp
     authApiService.getProfile()
       .then((res) => {
         setProfile(res.data);
+        setBio(res.data.bio || '');
+        setAvatarUrl(res.data.avatarUrl || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?ixlib=rb-4.0.3&auto=format&fit=crop&w=256&q=80');
+        setFullName(res.data.fullName || '');
+        setPhone(res.data.phone || '');
       })
       .finally(() => {
         setIsLoading(false);
@@ -40,22 +49,45 @@ export function ProfileView({ infoHref, securityHref }: Readonly<ProfileViewProp
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // In a real app, upload this file to server via FormData API
-      // Mocking local object URL preview
+      setSelectedFile(file);
       const objectUrl = URL.createObjectURL(file);
       setAvatarUrl(objectUrl);
     }
   };
 
   const handleRemoveAvatar = () => {
-    setAvatarUrl(''); // Reset to default/empty
-    // Add API call to remove avatar on server here
+    setSelectedFile(null);
+    setAvatarUrl('');
   };
 
-  const handleSave = () => {
-    // API call to save Bio
-    console.log('Saved Bio:', bio);
-    alert('Đã lưu thay đổi thông tin cá nhân!');
+  const handleSave = async () => {
+    try {
+      setIsSaving(true);
+      let finalAvatarUrl = avatarUrl;
+      
+      // If a new file is selected, upload it first
+      if (selectedFile) {
+        const uploadRes = await uploadApiService.uploadImage(selectedFile, 'avatars');
+        finalAvatarUrl = uploadRes.url;
+        setAvatarUrl(finalAvatarUrl);
+      }
+      
+      await authApiService.updateProfile({
+        bio,
+        avatarUrl: finalAvatarUrl,
+        fullName,
+        phone,
+      });
+      
+      alert('Đã lưu thay đổi thông tin cá nhân!');
+      setProfile(prev => prev ? { ...prev, bio, avatarUrl: finalAvatarUrl, fullName, phone } : null);
+      setSelectedFile(null);
+    } catch (error) {
+      console.error('Failed to update profile:', error);
+      alert('Có lỗi xảy ra khi lưu thông tin. Vui lòng thử lại!');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (isLoading) {
@@ -116,23 +148,23 @@ export function ProfileView({ infoHref, securityHref }: Readonly<ProfileViewProp
         <div className="mt-8 grid grid-cols-2 gap-x-6 gap-y-6">
           <Input 
             label="Họ và tên" 
-            value={profile?.fullName || ''} 
-            disabled 
+            value={fullName} 
+            onChange={(e) => setFullName(e.target.value)}
           />
           <Input 
             label="Email công việc" 
-            value={mockEmail} 
+            value={profile?.email || mockEmail} 
             disabled 
             trailingIcon={<Lock className="h-4 w-4" />}
           />
           <Input 
             label="Số điện thoại" 
-            value={mockPhone} 
-            disabled 
+            value={phone} 
+            onChange={(e) => setPhone(e.target.value)}
           />
           <Input 
             label="Vai trò" 
-            value={profile?.role?.roleName || ''} 
+            value={typeof profile?.role === 'object' ? (profile?.role as any).roleName : profile?.role || ''} 
             disabled 
           />
           
@@ -149,8 +181,16 @@ export function ProfileView({ infoHref, securityHref }: Readonly<ProfileViewProp
         </div>
 
         <div className="mt-8 flex justify-end gap-3">
-          <Button variant="secondary" onClick={() => setBio('')}>Hủy thay đổi</Button>
-          <Button variant="primary" onClick={handleSave}>Lưu thay đổi</Button>
+          <Button variant="secondary" onClick={() => {
+            setBio(profile?.bio || '');
+            setAvatarUrl(profile?.avatarUrl || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?ixlib=rb-4.0.3&auto=format&fit=crop&w=256&q=80');
+            setFullName(profile?.fullName || '');
+            setPhone(profile?.phone || '');
+            setSelectedFile(null);
+          }} disabled={isSaving}>Hủy thay đổi</Button>
+          <Button variant="primary" onClick={handleSave} disabled={isSaving}>
+            {isSaving ? 'Đang lưu...' : 'Lưu thay đổi'}
+          </Button>
         </div>
       </div>
     </ProfileLayout>

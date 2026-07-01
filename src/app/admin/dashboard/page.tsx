@@ -17,7 +17,12 @@ export default function Page() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([reportApiService.getAdminDashboard(), reportApiService.getRevenueReport()])
+    const endDate = new Date().toISOString();
+    const startDateDate = new Date();
+    startDateDate.setFullYear(startDateDate.getFullYear() - 1);
+    const startDate = startDateDate.toISOString();
+    
+    Promise.all([reportApiService.getAdminDashboard(), reportApiService.getRevenueReport({ startDate, endDate })])
       .then(([dashboardRes, revenueRes]) => {
         setStats(dashboardRes.data);
         setRevenueSeries(revenueRes.data.breakdownByMonth);

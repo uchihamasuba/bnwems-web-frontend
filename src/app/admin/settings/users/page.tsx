@@ -21,15 +21,15 @@ import { ROLE_OPTIONS } from '@/constants/roles';
 import type { AdminUser } from '@/types/user';
 
 const STATUS_LABEL: Record<string, string> = {
-  ACTIVE: 'Đang hoạt động',
-  INACTIVE: 'Đã vô hiệu hóa',
-  LOCKED: 'Tạm khóa',
+  active: 'Đang hoạt động',
+  inactive: 'Đã vô hiệu hóa',
+  locked: 'Tạm khóa',
 };
 
 const STATUS_OPTIONS = [
-  { value: 'ACTIVE', label: 'Đang hoạt động' },
-  { value: 'INACTIVE', label: 'Đã vô hiệu hóa' },
-  { value: 'LOCKED', label: 'Tạm khóa' },
+  { value: 'active', label: 'Đang hoạt động' },
+  { value: 'inactive', label: 'Đã vô hiệu hóa' },
+  { value: 'locked', label: 'Tạm khóa' },
 ];
 
 export default function Page() {
@@ -106,9 +106,9 @@ export default function Page() {
   };
 
   const handleToggleStatus = async (user: AdminUser) => {
-    const nextStatus = user.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    const nextStatus = user.status === 'active' ? 'inactive' : 'active';
     const confirmMessage =
-      nextStatus === 'INACTIVE'
+      nextStatus === 'inactive'
         ? `Vô hiệu hóa tài khoản "${user.fullName}"?`
         : `Kích hoạt lại tài khoản "${user.fullName}"?`;
     if (!window.confirm(confirmMessage)) return;
@@ -152,7 +152,10 @@ export default function Page() {
     {
       key: 'role',
       label: 'Vai trò',
-      render: (row) => <Badge variant="neutral">{ROLE_OPTIONS.find((r) => r.value === row.role)?.label ?? row.role}</Badge>,
+      render: (row) => {
+        const roleValue = typeof row.role === 'object' ? (row.role as any).roleName : row.role;
+        return <Badge variant="neutral">{ROLE_OPTIONS.find((r) => r.value === roleValue)?.label ?? roleValue}</Badge>;
+      },
     },
     {
       key: 'status',
@@ -200,12 +203,12 @@ export default function Page() {
               </button>
               <button
                 type="button"
-                aria-label={row.status === 'ACTIVE' ? 'Vô hiệu hóa' : 'Kích hoạt'}
-                title={row.status === 'ACTIVE' ? 'Vô hiệu hóa' : 'Kích hoạt'}
+                aria-label={row.status === 'active' ? 'Vô hiệu hóa' : 'Kích hoạt'}
+                title={row.status === 'active' ? 'Vô hiệu hóa' : 'Kích hoạt'}
                 onClick={() => handleToggleStatus(row)}
                 className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-red-600"
               >
-                {row.status === 'ACTIVE' ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                {row.status === 'active' ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
               </button>
             </>
           )}

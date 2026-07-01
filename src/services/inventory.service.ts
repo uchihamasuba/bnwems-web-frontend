@@ -47,15 +47,15 @@ export const inventoryApiService = {
     return response.data;
   },
 
-  /** POST /api/v1/warehouse/checkout (UC 2.23) */
+  /** POST /api/v1/inventory/checkout (UC 2.23) */
   async checkoutWarehouse(body: CheckoutInventoryRequest) {
-    const response = await api.post('/warehouse/checkout', body);
+    const response = await api.post('/inventory/checkout', body);
     return response.data;
   },
 
-  /** POST /api/v1/warehouse/return (UC 2.23) */
+  /** POST /api/v1/inventory/return (UC 2.23) */
   async returnWarehouse(body: ReturnInventoryRequest) {
-    const response = await api.post('/warehouse/return', body);
+    const response = await api.post('/inventory/return', body);
     return response.data;
   },
 };

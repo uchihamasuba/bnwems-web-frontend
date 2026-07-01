@@ -14,6 +14,10 @@ export interface AuthUser {
   fullName: string;
   role: AuthUserRole;
   status: AuthUserStatus;
+  bio?: string;
+  avatarUrl?: string;
+  email?: string;
+  phone?: string;
 }
 
 // GET /api/v1/auth/profile

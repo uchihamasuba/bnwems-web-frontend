@@ -28,9 +28,9 @@ export const userApiService = {
     return response.data;
   },
 
-  /** PUT /api/v1/users/{id}/status (UC 2.4) */
+  /** PATCH /api/v1/users/{id}/status (UC 2.4) */
   async updateUserStatus(id: string, payload: UpdateUserStatusPayload) {
-    const response = await api.put(`/users/${id}/status`, payload);
+    const response = await api.patch(`/users/${id}/status`, payload);
     return response.data;
   },
 

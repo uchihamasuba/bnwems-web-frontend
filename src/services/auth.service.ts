@@ -15,6 +15,13 @@ export interface ForgotPasswordPayload {
   username: string;
 }
 
+export interface UpdateProfilePayload {
+  fullName?: string;
+  phone?: string;
+  bio?: string;
+  avatarUrl?: string;
+}
+
 export const authApiService = {
   /** POST /api/v1/auth/login */
   async login(payload: LoginPayload) {
@@ -37,6 +44,12 @@ export const authApiService = {
   /** GET /api/v1/auth/profile */
   async getProfile() {
     const response = await api.get('/auth/profile');
+    return response.data;
+  },
+
+  /** PUT /api/v1/auth/profile */
+  async updateProfile(payload: UpdateProfilePayload) {
+    const response = await api.put('/auth/profile', payload);
     return response.data;
   },
 };

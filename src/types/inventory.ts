@@ -81,29 +81,28 @@ export interface GetWarehouseHistoriesQuery {
   limit?: number;
 }
 
-// POST /api/v1/warehouse/checkout
+// POST /api/v1/inventory/checkout
 export interface CheckoutInventoryItem {
-  catalogItemId: string;
+  equipmentItemId: number;
   quantity: number;
 }
 
 export interface CheckoutInventoryRequest {
-  warehouseId: string;
-  orderId: string;
+  orderId: number;
   items: CheckoutInventoryItem[];
 }
 
-// POST /api/v1/warehouse/return
-export type InventoryItemCondition = 'GOOD' | 'DAMAGED';
+// POST /api/v1/inventory/return
+export type InventoryItemCondition = 'good' | 'damaged' | 'lost';
 
 export interface ReturnInventoryItem {
-  catalogItemId: string;
+  equipmentItemId: number;
   quantity: number;
-  condition: InventoryItemCondition;
+  condition?: InventoryItemCondition;
 }
 
 export interface ReturnInventoryRequest {
-  warehouseId: string;
-  orderId: string;
+  orderId: number;
   items: ReturnInventoryItem[];
 }
+

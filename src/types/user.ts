@@ -4,7 +4,7 @@
 // tiếp trong PUT /users/:id. Email/phone cũng không còn có trong response của module này.
 
 export type UserRole = 'Admin' | 'Manager' | 'LEADER_STAFF' | 'TECHNICAL_STAFF';
-export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'LOCKED';
+export type UserStatus = 'active' | 'inactive' | 'locked';
 
 // GET /api/v1/users
 export interface AdminUser {
@@ -30,12 +30,12 @@ export interface UpdateUserPayload {
   role: UserRole;
 }
 
-// PUT /api/v1/users/:id/status
+// PATCH /api/v1/users/:id/status
 export interface UpdateUserStatusPayload {
-  status: UserStatus;
+  status: 'active' | 'inactive';
 }
 
-// POST /api/v1/users/:id/reset-password
+// PATCH /api/v1/users/:id/reset-password
 export interface ResetPasswordPayload {
   newPassword: string;
 }
