@@ -21,15 +21,13 @@ import { ROLE_OPTIONS } from '@/constants/roles';
 import type { AdminUser } from '@/types/user';
 
 const STATUS_LABEL: Record<string, string> = {
-  ACTIVE: 'Đang hoạt động',
-  INACTIVE: 'Đã vô hiệu hóa',
-  LOCKED: 'Tạm khóa',
+  active: 'Đang hoạt động',
+  inactive: 'Đã vô hiệu hóa',
 };
 
 const STATUS_OPTIONS = [
-  { value: 'ACTIVE', label: 'Đang hoạt động' },
-  { value: 'INACTIVE', label: 'Đã vô hiệu hóa' },
-  { value: 'LOCKED', label: 'Tạm khóa' },
+  { value: 'active', label: 'Đang hoạt động' },
+  { value: 'inactive', label: 'Đã vô hiệu hóa' },
 ];
 
 export default function Page() {
@@ -58,6 +56,20 @@ export default function Page() {
   const [refreshToken, setRefreshToken] = useState(0);
   const refetchUsers = () => setRefreshToken((t) => t + 1);
 
+  // Không còn endpoint GET /roles để tra roleId theo vai trò — suy ra map roleName -> roleId từ
+  // chính danh sách user đã có (mỗi user trả về role: {roleId, roleName}). Nếu hệ thống chưa có
+  // user nào thuộc 1 vai trò nào đó, map sẽ thiếu entry cho vai trò đó và việc tạo/sửa user với
+  // vai trò đó sẽ báo lỗi rõ ràng thay vì gửi roleId sai.
+  const [roleIdByName, setRoleIdByName] = useState<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    userApiService.getUsers({ limit: 200 }).then((res) => {
+      const map = new Map<string, string>();
+      (res.data as AdminUser[]).forEach((u) => map.set(u.role.roleName, u.role.roleId));
+      setRoleIdByName(map);
+    });
+  }, [refreshToken]);
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag toggled before/after the fetch below, not a render loop
     setIsLoading(true);
@@ -78,10 +90,20 @@ export default function Page() {
   }, [pagination.currentPage, pagination.limit, debouncedSearch, roleFilter, statusFilter, refreshToken]);
 
   const handleCreateSubmit = async (values: UserFormValues) => {
+    const roleId = roleIdByName.get(values.role);
+    if (!roleId) {
+      setFormError(`Chưa xác định được roleId cho vai trò "${values.role}" (hệ thống chưa có user nào thuộc vai trò này).`);
+      return;
+    }
     setIsSubmittingForm(true);
     setFormError('');
     try {
-      await userApiService.createUser(values);
+      await userApiService.createUser({
+        username: values.username,
+        password: values.password,
+        fullName: values.fullName,
+        roleId,
+      });
       setFormModal(null);
       refetchUsers();
     } catch (err) {
@@ -92,10 +114,15 @@ export default function Page() {
   };
 
   const handleEditSubmit = async (values: UserFormValues, user: AdminUser) => {
+    const roleId = roleIdByName.get(values.role);
+    if (!roleId) {
+      setFormError(`Chưa xác định được roleId cho vai trò "${values.role}" (hệ thống chưa có user nào thuộc vai trò này).`);
+      return;
+    }
     setIsSubmittingForm(true);
     setFormError('');
     try {
-      await userApiService.updateUser(user.id, { fullName: values.fullName, role: values.role });
+      await userApiService.updateUser(user.userId, { fullName: values.fullName, roleId });
       setFormModal(null);
       refetchUsers();
     } catch (err) {
@@ -106,15 +133,15 @@ export default function Page() {
   };
 
   const handleToggleStatus = async (user: AdminUser) => {
-    const nextStatus = user.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    const nextStatus = user.status === 'active' ? 'inactive' : 'active';
     const confirmMessage =
-      nextStatus === 'INACTIVE'
+      nextStatus === 'inactive'
         ? `Vô hiệu hóa tài khoản "${user.fullName}"?`
         : `Kích hoạt lại tài khoản "${user.fullName}"?`;
     if (!window.confirm(confirmMessage)) return;
 
     try {
-      await userApiService.updateUserStatus(user.id, { status: nextStatus });
+      await userApiService.updateUserStatus(user.userId, { status: nextStatus });
       refetchUsers();
     } catch (err) {
       window.alert(getErrorMessage(err, 'Cập nhật trạng thái thất bại'));
@@ -126,7 +153,7 @@ export default function Page() {
     setIsResettingPassword(true);
     setResetPasswordError('');
     try {
-      await userApiService.resetPassword(resetPasswordUser.id, { newPassword });
+      await userApiService.resetPassword(resetPasswordUser.userId, { newPassword });
       setResetPasswordUser(null);
     } catch (err) {
       setResetPasswordError(getErrorMessage(err, 'Đặt lại mật khẩu thất bại'));
@@ -152,7 +179,7 @@ export default function Page() {
     {
       key: 'role',
       label: 'Vai trò',
-      render: (row) => <Badge variant="neutral">{ROLE_OPTIONS.find((r) => r.value === row.role)?.label ?? row.role}</Badge>,
+      render: (row) => <Badge variant="neutral">{row.role.roleName}</Badge>,
     },
     {
       key: 'status',
@@ -200,12 +227,12 @@ export default function Page() {
               </button>
               <button
                 type="button"
-                aria-label={row.status === 'ACTIVE' ? 'Vô hiệu hóa' : 'Kích hoạt'}
-                title={row.status === 'ACTIVE' ? 'Vô hiệu hóa' : 'Kích hoạt'}
+                aria-label={row.status === 'active' ? 'Vô hiệu hóa' : 'Kích hoạt'}
+                title={row.status === 'active' ? 'Vô hiệu hóa' : 'Kích hoạt'}
                 onClick={() => handleToggleStatus(row)}
                 className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-red-600"
               >
-                {row.status === 'ACTIVE' ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                {row.status === 'active' ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
               </button>
             </>
           )}
@@ -265,7 +292,7 @@ export default function Page() {
         </div>
 
         <div className="mt-4">
-          <Table columns={columns} rows={users} rowKey={(row) => row.id} isLoading={isLoading} />
+          <Table columns={columns} rows={users} rowKey={(row) => row.userId} isLoading={isLoading} />
         </div>
         <Pagination pagination={pagination} onPageChange={setPage} />
       </div>

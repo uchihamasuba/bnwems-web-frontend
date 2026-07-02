@@ -1,9 +1,11 @@
-// Nhãn hiển thị cho trạng thái Order — đúng theo enum trong docs/api/09-orders.md:
-// DRAFT → QUOTED → CONFIRMED → IN_PROGRESS → COMPLETED
+// Nhãn hiển thị cho trạng thái Order — đúng theo enum lowercase trong docs/api/09-orders.md:
+// draft → confirmed → deposit_paid → in_progress → settlement_pending → completed | cancelled
 export const ORDER_STATUS_LABEL: Record<string, string> = {
-  DRAFT: 'Nháp',
-  QUOTED: 'Đã báo giá',
-  CONFIRMED: 'Đã xác nhận',
-  IN_PROGRESS: 'Đang thực hiện',
-  COMPLETED: 'Hoàn thành',
+  draft: 'Nháp',
+  confirmed: 'Đã xác nhận',
+  deposit_paid: 'Đã đặt cọc',
+  in_progress: 'Đang thực hiện',
+  settlement_pending: 'Chờ quyết toán',
+  completed: 'Hoàn thành',
+  cancelled: 'Đã hủy',
 };

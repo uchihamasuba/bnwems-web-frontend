@@ -1,6 +1,7 @@
 // UC 2.1, 2.2 (docs/api/01-auth.md)
 
-export type UserRole = 'Admin' | 'Manager' | 'LEADER_STAFF' | 'TECHNICAL_STAFF';
+// roleName khớp enum query của docs/api/02-users-roles.md: "Admin, Manager, Leader Staff, Technical Staff".
+export type UserRole = 'Admin' | 'Manager' | 'Leader Staff' | 'Technical Staff';
 export type AuthUserStatus = 'active' | 'inactive' | 'locked';
 
 export interface AuthUserRole {

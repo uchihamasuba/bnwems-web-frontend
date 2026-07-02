@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { ROLE_OPTIONS } from '@/constants/roles';
-import type { AdminUser, UserRole } from '@/types/user';
+import type { UserRole } from '@/types/auth';
+import type { AdminUser } from '@/types/user';
 
 export interface UserFormValues {
   username: string;
@@ -52,7 +53,7 @@ export function UserFormModal({
     if (isOpen) {
       setValues(
         mode === 'edit' && user
-          ? { username: user.username, password: '', fullName: user.fullName, role: user.role }
+          ? { username: user.username, password: '', fullName: user.fullName, role: user.role.roleName }
           : EMPTY_VALUES
       );
       setConfirmPassword('');

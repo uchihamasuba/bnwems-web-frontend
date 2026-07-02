@@ -76,7 +76,8 @@ export default function Page() {
           customerOrders.map(async (order: Order) => {
             try {
               const quoteRes = await quotationApiService.getOrderQuotations(order.orderId, { limit: 20 });
-              const accepted = quoteRes.data.find((q: { status: string }) => q.status === 'ACCEPTED');
+              // docs/api/08-quotations.md: status "confirmed" (lowercase) thay cho "ACCEPTED" cũ.
+              const accepted = quoteRes.data.find((q: { status: string }) => q.status === 'confirmed');
               const latest = quoteRes.data[0];
               return {
                 ...order,

@@ -26,7 +26,11 @@ export const Badge: React.FC<BadgeProps> = ({ variant = 'neutral', children, cla
   );
 };
 
-/** Map order/user status strings to badge variant */
+/**
+ * Map order/user/quotation status strings to badge variant.
+ * Nhiều module (Order, User, Quotation...) trả status dạng lowercase theo doc mới trong khi
+ * mapping này viết bằng UPPERCASE cho dễ đọc — so khớp không phân biệt hoa/thường để dùng chung.
+ */
 export const getStatusBadgeVariant = (status: string): BadgeVariant => {
   const mapping: Record<string, BadgeVariant> = {
     ACTIVE: 'success',
@@ -34,7 +38,9 @@ export const getStatusBadgeVariant = (status: string): BadgeVariant => {
     COMPLETED: 'success',
     DRAFT: 'neutral',
     QUOTED: 'warning',
+    DEPOSIT_PAID: 'info',
     IN_PROGRESS: 'info',
+    SETTLEMENT_PENDING: 'warning',
     PENDING_SURVEY: 'warning',
     WAITING_FOR_DEPOSIT: 'warning',
     EXECUTING: 'info',
@@ -45,7 +51,7 @@ export const getStatusBadgeVariant = (status: string): BadgeVariant => {
     LOCKED: 'warning',
     MAINTENANCE: 'warning',
   };
-  return mapping[status] || 'neutral';
+  return mapping[status.toUpperCase()] || 'neutral';
 };
 
 export default Badge;

@@ -47,10 +47,10 @@ describe('userApiService — getUsers()', () => {
     const mockResponse = { data: { success: true, data: [], meta: { page: 1, limit: 20, totalCount: 0 } } };
     (mockApi.get as jest.Mock).mockResolvedValue(mockResponse);
 
-    await userApiService.getUsers({ page: 1, limit: 20, search: 'a', role: 'Manager', status: 'ACTIVE' });
+    await userApiService.getUsers({ page: 1, limit: 20, search: 'a', role: 'Manager', status: 'active' });
 
     expect(mockApi.get).toHaveBeenCalledWith('/users', {
-      params: { page: 1, limit: 20, search: 'a', role: 'Manager', status: 'ACTIVE' },
+      params: { page: 1, limit: 20, search: 'a', role: 'Manager', status: 'active' },
     });
   });
 });
@@ -63,15 +63,15 @@ describe('userApiService — createUser()', () => {
       fullName: 'Lê Văn C',
       username: 'leader02',
       password: 'initPass123',
-      role: 'LEADER_STAFF' as const,
+      roleId: '3',
     };
-    const mockResponse = { data: { success: true, message: 'User created successfully', data: { id: 'usr-20' } } };
+    const mockResponse = { data: { success: true, message: 'User created successfully', data: { userId: 'usr-20' } } };
     (mockApi.post as jest.Mock).mockResolvedValue(mockResponse);
 
     const result = await userApiService.createUser(payload);
 
     expect(mockApi.post).toHaveBeenCalledWith('/users', payload);
-    expect(result.data.id).toBe('usr-20');
+    expect(result.data.userId).toBe('usr-20');
   });
 });
 
@@ -82,22 +82,22 @@ describe('userApiService — updateUser()', () => {
     const mockResponse = { data: { success: true, message: 'User updated successfully' } };
     (mockApi.put as jest.Mock).mockResolvedValue(mockResponse);
 
-    await userApiService.updateUser('usr-20', { fullName: 'Lê Văn C', role: 'Manager' });
+    await userApiService.updateUser('usr-20', { fullName: 'Lê Văn C', roleId: '2' });
 
-    expect(mockApi.put).toHaveBeenCalledWith('/users/usr-20', { fullName: 'Lê Văn C', role: 'Manager' });
+    expect(mockApi.put).toHaveBeenCalledWith('/users/usr-20', { fullName: 'Lê Văn C', roleId: '2' });
   });
 });
 
 describe('userApiService — updateUserStatus()', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('should call PUT /users/{id}/status with status (UC 2.4)', async () => {
+  it('should call PATCH /users/{id}/status with status (UC 2.4)', async () => {
     const mockResponse = { data: { success: true, message: 'User status updated successfully' } };
-    (mockApi.put as jest.Mock).mockResolvedValue(mockResponse);
+    (mockApi.patch as jest.Mock).mockResolvedValue(mockResponse);
 
-    await userApiService.updateUserStatus('usr-20', { status: 'INACTIVE' });
+    await userApiService.updateUserStatus('usr-20', { status: 'inactive' });
 
-    expect(mockApi.put).toHaveBeenCalledWith('/users/usr-20/status', { status: 'INACTIVE' });
+    expect(mockApi.patch).toHaveBeenCalledWith('/users/usr-20/status', { status: 'inactive' });
   });
 });
 

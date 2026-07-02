@@ -1,17 +1,25 @@
 // UC 2.4 (docs/api/02-users-roles.md)
-// Lưu ý: doc mới không còn entity `Role`/endpoint GET /roles riêng — role là enum cố định
-// (ADMIN/MANAGER/LEADER_STAFF/TECHNICAL_STAFF), không gán qua endpoint riêng mà sửa trực
-// tiếp trong PUT /users/:id. Email/phone cũng không còn có trong response của module này.
+// Doc mới: user trả về role dạng object { roleId, roleName } (không còn field role phẳng như
+// trước); tạo/sửa user gửi roleId thay vì role string. Không còn endpoint GET /roles để tra
+// roleId theo từng vai trò — FE tự suy ra roleId từ danh sách user đã có (xem
+// app/admin/settings/users/page.tsx). status đổi từ UPPERCASE ('ACTIVE'...) sang lowercase
+// ('active'...), không còn giá trị 'LOCKED'; đổi trạng thái dùng PATCH (không phải PUT).
 
-export type UserRole = 'Admin' | 'Manager' | 'LEADER_STAFF' | 'TECHNICAL_STAFF';
-export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'LOCKED';
+import type { UserRole } from './auth';
+
+export interface UserRoleRef {
+  roleId: string;
+  roleName: UserRole;
+}
+
+export type UserStatus = 'active' | 'inactive';
 
 // GET /api/v1/users
 export interface AdminUser {
-  id: string;
+  userId: string;
   username: string;
   fullName: string;
-  role: UserRole;
+  role: UserRoleRef;
   status: UserStatus;
   createdAt: string;
 }
@@ -21,16 +29,24 @@ export interface CreateUserPayload {
   username: string;
   password: string;
   fullName: string;
-  role: UserRole;
+  roleId: string;
+  email?: string;
+  phone?: string;
+  bio?: string;
+  avatarUrl?: string;
 }
 
 // PUT /api/v1/users/:id
 export interface UpdateUserPayload {
   fullName: string;
-  role: UserRole;
+  roleId: string;
+  email?: string;
+  phone?: string;
+  bio?: string;
+  avatarUrl?: string;
 }
 
-// PUT /api/v1/users/:id/status
+// PATCH /api/v1/users/:id/status
 export interface UpdateUserStatusPayload {
   status: UserStatus;
 }

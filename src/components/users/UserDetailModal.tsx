@@ -5,7 +5,6 @@ import { Modal } from '@/components/ui/Modal';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge, getStatusBadgeVariant } from '@/components/ui/Badge';
 import { formatDate } from '@/utils/formatDate';
-import { ROLE_OPTIONS } from '@/constants/roles';
 import type { AdminUser } from '@/types/user';
 
 interface UserDetailModalProps {
@@ -15,9 +14,8 @@ interface UserDetailModalProps {
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  ACTIVE: 'Đang hoạt động',
-  INACTIVE: 'Đã vô hiệu hóa',
-  LOCKED: 'Tạm khóa',
+  active: 'Đang hoạt động',
+  inactive: 'Đã vô hiệu hóa',
 };
 
 function InfoField({ label, value }: Readonly<{ label: string; value: ReactNode }>) {
@@ -31,8 +29,6 @@ function InfoField({ label, value }: Readonly<{ label: string; value: ReactNode 
 
 export function UserDetailModal({ isOpen, onClose, user }: Readonly<UserDetailModalProps>) {
   if (!user) return null;
-
-  const roleLabel = ROLE_OPTIONS.find((r) => r.value === user.role)?.label ?? user.role;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Chi tiết người dùng" size="lg">
@@ -49,8 +45,8 @@ export function UserDetailModal({ isOpen, onClose, user }: Readonly<UserDetailMo
         </div>
 
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-xl border border-slate-100 p-4">
-          <InfoField label="Mã người dùng" value={user.id} />
-          <InfoField label="Vai trò" value={<Badge variant="neutral">{roleLabel}</Badge>} />
+          <InfoField label="Mã người dùng" value={user.userId} />
+          <InfoField label="Vai trò" value={<Badge variant="neutral">{user.role.roleName}</Badge>} />
           <InfoField label="Ngày tạo" value={formatDate(user.createdAt)} />
         </div>
       </div>

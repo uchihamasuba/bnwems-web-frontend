@@ -79,9 +79,9 @@ export default function Page() {
   useEffect(() => {
     Promise.all([
       orderApiService.getOrders({ limit: 1 }),
-      orderApiService.getOrders({ limit: 1, status: 'CONFIRMED' }),
-      orderApiService.getOrders({ limit: 1, status: 'IN_PROGRESS' }),
-      orderApiService.getOrders({ limit: 1, status: 'COMPLETED' }),
+      orderApiService.getOrders({ limit: 1, status: 'confirmed' }),
+      orderApiService.getOrders({ limit: 1, status: 'in_progress' }),
+      orderApiService.getOrders({ limit: 1, status: 'completed' }),
     ]).then(([all, confirmed, inProgress, completed]) => {
       setCounts({
         total: all.meta.totalCount,
