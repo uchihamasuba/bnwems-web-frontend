@@ -5,21 +5,13 @@ import { Modal } from '@/components/ui/Modal';
 import { Badge, getStatusBadgeVariant } from '@/components/ui/Badge';
 import { formatDate } from '@/utils/formatDate';
 import { formatCurrency } from '@/utils/formatCurrency';
-import type { CatalogItem } from '@/types/catalog';
+import type { EquipmentItem } from '@/types/equipment';
 
-interface CatalogItemDetailModalProps {
+interface EquipmentDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
-  item: CatalogItem | null;
-  categoryName?: string;
+  item: EquipmentItem | null;
 }
-
-const ITEM_TYPE_LABEL: Record<string, string> = {
-  EQUIPMENT: 'Thiết bị',
-  SERVICE: 'Dịch vụ',
-  MATERIAL: 'Vật tư',
-  PACKAGE: 'Gói',
-};
 
 function DetailRow({ label, value }: Readonly<{ label: string; value: ReactNode }>) {
   return (
@@ -30,22 +22,24 @@ function DetailRow({ label, value }: Readonly<{ label: string; value: ReactNode 
   );
 }
 
-export function CatalogItemDetailModal({ isOpen, onClose, item, categoryName }: Readonly<CatalogItemDetailModalProps>) {
+export function EquipmentDetailModal({ isOpen, onClose, item }: Readonly<EquipmentDetailModalProps>) {
   if (!item) return null;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Chi tiết thiết bị">
       <div className="flex flex-col">
+        <DetailRow label="Mã thiết bị" value={item.code} />
         <DetailRow label="Tên thiết bị" value={item.name} />
-        <DetailRow label="Loại" value={ITEM_TYPE_LABEL[item.itemType] ?? item.itemType} />
-        <DetailRow label="Danh mục" value={categoryName ?? '—'} />
-        <DetailRow label="Mô tả" value={item.description || '—'} />
-        <DetailRow label="Đơn giá" value={formatCurrency(item.basePrice)} />
+        <DetailRow label="Danh mục" value={item.category || '—'} />
+        <DetailRow label="Đơn vị tính" value={item.unit} />
+        <DetailRow label="Giá thuê" value={formatCurrency(item.rentalPrice)} />
+        <DetailRow label="Giá vốn" value={formatCurrency(item.costPrice)} />
+        <DetailRow label="Giá trị đền bù" value={formatCurrency(item.replacementValue)} />
         <DetailRow
           label="Trạng thái"
           value={
-            <Badge variant={getStatusBadgeVariant(item.isActive ? 'ACTIVE' : 'INACTIVE')}>
-              {item.isActive ? 'Đang hoạt động' : 'Đã vô hiệu hóa'}
+            <Badge variant={getStatusBadgeVariant(item.status === 'active' ? 'ACTIVE' : 'INACTIVE')}>
+              {item.status === 'active' ? 'Đang hoạt động' : 'Đã vô hiệu hóa'}
             </Badge>
           }
         />
@@ -55,4 +49,4 @@ export function CatalogItemDetailModal({ isOpen, onClose, item, categoryName }: 
   );
 }
 
-export default CatalogItemDetailModal;
+export default EquipmentDetailModal;

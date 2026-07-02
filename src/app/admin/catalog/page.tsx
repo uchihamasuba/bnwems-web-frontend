@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Search, Eye, Pencil, Ban, CheckCircle2, Plus, FolderTree } from 'lucide-react';
+import { equipmentApiService } from '@/services/equipment.service';
 import { catalogApiService } from '@/services/catalog.service';
 import { Table, TableColumn } from '@/components/ui/Table';
 import { Pagination } from '@/components/ui/Pagination';
@@ -10,39 +11,26 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { Badge, getStatusBadgeVariant } from '@/components/ui/Badge';
-import { CatalogItemFormModal, CatalogItemFormValues } from '@/components/catalog/CatalogItemFormModal';
-import { CatalogItemDetailModal } from '@/components/catalog/CatalogItemDetailModal';
+import { EquipmentFormModal, EquipmentFormValues } from '@/components/catalog/EquipmentFormModal';
+import { EquipmentDetailModal } from '@/components/catalog/EquipmentDetailModal';
 import { usePagination } from '@/hooks/usePagination';
 import { useDebounce } from '@/hooks/useDebounce';
 import { usePermission } from '@/hooks/usePermission';
 import { formatDate } from '@/utils/formatDate';
 import { formatCurrency } from '@/utils/formatCurrency';
-import type { CatalogCategory, CatalogItem } from '@/types/catalog';
-
-const ITEM_TYPE_LABEL: Record<string, string> = {
-  EQUIPMENT: 'Thiết bị',
-  SERVICE: 'Dịch vụ',
-  MATERIAL: 'Vật tư',
-  PACKAGE: 'Gói',
-};
-
-const ITEM_TYPE_OPTIONS = [
-  { value: 'EQUIPMENT', label: 'Thiết bị' },
-  { value: 'SERVICE', label: 'Dịch vụ' },
-  { value: 'MATERIAL', label: 'Vật tư' },
-  { value: 'PACKAGE', label: 'Gói' },
-];
+import type { CatalogCategory } from '@/types/catalog';
+import type { EquipmentItem } from '@/types/equipment';
 
 const STATUS_OPTIONS = [
-  { value: 'true', label: 'Đang hoạt động' },
-  { value: 'false', label: 'Đã vô hiệu hóa' },
+  { value: 'active', label: 'Đang hoạt động' },
+  { value: 'inactive', label: 'Đã vô hiệu hóa' },
 ];
 
 export default function Page() {
   const { can } = usePermission();
   const canManage = can('master-data:manage');
 
-  const [items, setItems] = useState<CatalogItem[]>([]);
+  const [items, setItems] = useState<EquipmentItem[]>([]);
   const [categories, setCategories] = useState<CatalogCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -52,29 +40,29 @@ export default function Page() {
 
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 400);
-  const [itemTypeFilter, setItemTypeFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
   const { pagination, setPage, updatePagination } = usePagination(10);
 
-  const [formModal, setFormModal] = useState<{ mode: 'create' | 'edit'; item: CatalogItem | null } | null>(null);
+  const [formModal, setFormModal] = useState<{ mode: 'create' | 'edit'; item: EquipmentItem | null } | null>(null);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const [formError, setFormError] = useState('');
 
-  const [detailItem, setDetailItem] = useState<CatalogItem | null>(null);
+  const [detailItem, setDetailItem] = useState<EquipmentItem | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const refetchItems = () => setRefreshToken((t) => t + 1);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag toggled before/after the fetch below, not a render loop
     setIsLoading(true);
-    catalogApiService
-      .getCatalogItems({
+    equipmentApiService
+      .getEquipment({
         page: pagination.currentPage,
         limit: pagination.limit,
         search: debouncedSearch || undefined,
-        itemType: itemTypeFilter || undefined,
-        isActive: statusFilter ? statusFilter === 'true' : undefined,
+        category: categoryFilter || undefined,
+        status: statusFilter || undefined,
       })
       .then((res) => {
         setItems(res.data);
@@ -85,13 +73,13 @@ export default function Page() {
       })
       .finally(() => setIsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pagination.currentPage, pagination.limit, debouncedSearch, itemTypeFilter, statusFilter, refreshToken]);
+  }, [pagination.currentPage, pagination.limit, debouncedSearch, categoryFilter, statusFilter, refreshToken]);
 
-  const handleCreateSubmit = async (values: CatalogItemFormValues) => {
+  const handleCreateSubmit = async (values: EquipmentFormValues) => {
     setIsSubmittingForm(true);
     setFormError('');
     try {
-      await catalogApiService.createCatalogItem(values);
+      await equipmentApiService.createEquipment(values);
       setFormModal(null);
       refetchItems();
     } catch (err) {
@@ -101,15 +89,17 @@ export default function Page() {
     }
   };
 
-  const handleEditSubmit = async (values: CatalogItemFormValues, item: CatalogItem) => {
+  const handleEditSubmit = async (values: EquipmentFormValues, item: EquipmentItem) => {
     setIsSubmittingForm(true);
     setFormError('');
     try {
-      await catalogApiService.updateCatalogItem(item.id, {
+      await equipmentApiService.updateEquipment(item.equipmentItemId, {
         name: values.name,
-        description: values.description,
-        basePrice: values.basePrice,
-        categoryId: values.categoryId,
+        category: values.category,
+        unit: values.unit,
+        rentalPrice: values.rentalPrice,
+        costPrice: values.costPrice,
+        replacementValue: values.replacementValue,
       });
       setFormModal(null);
       refetchItems();
@@ -120,46 +110,38 @@ export default function Page() {
     }
   };
 
-  const handleDeactivate = async (item: CatalogItem) => {
-    const nextIsActive = !item.isActive;
-    const confirmMessage = nextIsActive
-      ? `Kích hoạt lại thiết bị "${item.name}"?`
-      : `Vô hiệu hóa thiết bị "${item.name}"? Thiết bị sẽ không được sử dụng cho đơn hàng mới.`;
+  const handleToggleStatus = async (item: EquipmentItem) => {
+    const nextStatus = item.status === 'active' ? 'inactive' : 'active';
+    const confirmMessage =
+      nextStatus === 'active'
+        ? `Kích hoạt lại thiết bị "${item.name}"?`
+        : `Vô hiệu hóa thiết bị "${item.name}"? Thiết bị sẽ không được sử dụng cho đơn hàng mới.`;
     if (!window.confirm(confirmMessage)) return;
 
     try {
-      await catalogApiService.updateCatalogItemStatus(item.id, { isActive: nextIsActive });
+      await equipmentApiService.updateEquipmentStatus(item.equipmentItemId, { status: nextStatus });
       refetchItems();
     } catch (err) {
       window.alert(getErrorMessage(err, 'Cập nhật trạng thái thất bại'));
     }
   };
 
-  const categoryNameById = new Map(categories.map((c) => [c.id, c.name]));
-
-  const columns: TableColumn<CatalogItem>[] = [
+  const columns: TableColumn<EquipmentItem>[] = [
+    { key: 'code', label: 'Mã' },
     { key: 'name', label: 'Tên thiết bị' },
+    { key: 'category', label: 'Danh mục', render: (row) => row.category || '—' },
+    { key: 'unit', label: 'Đơn vị' },
     {
-      key: 'itemType',
-      label: 'Loại',
-      render: (row) => ITEM_TYPE_LABEL[row.itemType] ?? row.itemType,
+      key: 'rentalPrice',
+      label: 'Giá thuê',
+      render: (row) => formatCurrency(row.rentalPrice),
     },
     {
-      key: 'categoryId',
-      label: 'Danh mục',
-      render: (row) => (row.categoryId ? categoryNameById.get(row.categoryId) ?? row.categoryId : '—'),
-    },
-    {
-      key: 'basePrice',
-      label: 'Đơn giá',
-      render: (row) => formatCurrency(row.basePrice),
-    },
-    {
-      key: 'isActive',
+      key: 'status',
       label: 'Trạng thái',
       render: (row) => (
-        <Badge variant={getStatusBadgeVariant(row.isActive ? 'ACTIVE' : 'INACTIVE')}>
-          {row.isActive ? 'Đang hoạt động' : 'Đã vô hiệu hóa'}
+        <Badge variant={getStatusBadgeVariant(row.status === 'active' ? 'ACTIVE' : 'INACTIVE')}>
+          {row.status === 'active' ? 'Đang hoạt động' : 'Đã vô hiệu hóa'}
         </Badge>
       ),
     },
@@ -195,12 +177,12 @@ export default function Page() {
               </button>
               <button
                 type="button"
-                aria-label={row.isActive ? 'Vô hiệu hóa' : 'Kích hoạt'}
-                title={row.isActive ? 'Vô hiệu hóa' : 'Kích hoạt'}
-                onClick={() => handleDeactivate(row)}
+                aria-label={row.status === 'active' ? 'Vô hiệu hóa' : 'Kích hoạt'}
+                title={row.status === 'active' ? 'Vô hiệu hóa' : 'Kích hoạt'}
+                onClick={() => handleToggleStatus(row)}
                 className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-red-600"
               >
-                {row.isActive ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                {row.status === 'active' ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
               </button>
             </>
           )}
@@ -236,7 +218,7 @@ export default function Page() {
         <div className="flex flex-wrap items-end gap-3">
           <div className="w-64">
             <Input
-              placeholder="Tìm theo tên thiết bị..."
+              placeholder="Tìm theo tên hoặc mã thiết bị..."
               icon={<Search className="h-4 w-4" />}
               value={search}
               onChange={(e) => {
@@ -247,12 +229,15 @@ export default function Page() {
           </div>
           <div className="w-48">
             <Select
-              value={itemTypeFilter}
+              value={categoryFilter}
               onChange={(e) => {
-                setItemTypeFilter(e.target.value);
+                setCategoryFilter(e.target.value);
                 setPage(1);
               }}
-              options={[{ value: '', label: 'Tất cả loại' }, ...ITEM_TYPE_OPTIONS]}
+              options={[
+                { value: '', label: 'Tất cả danh mục' },
+                ...categories.map((c) => ({ value: c.name, label: c.name })),
+              ]}
             />
           </div>
           <div className="w-48">
@@ -268,12 +253,12 @@ export default function Page() {
         </div>
 
         <div className="mt-4">
-          <Table columns={columns} rows={items} rowKey={(row) => row.id} isLoading={isLoading} />
+          <Table columns={columns} rows={items} rowKey={(row) => row.equipmentItemId} isLoading={isLoading} />
         </div>
         <Pagination pagination={pagination} onPageChange={setPage} />
       </div>
 
-      <CatalogItemFormModal
+      <EquipmentFormModal
         isOpen={!!formModal}
         mode={formModal?.mode ?? 'create'}
         item={formModal?.item}
@@ -293,12 +278,7 @@ export default function Page() {
         }}
       />
 
-      <CatalogItemDetailModal
-        isOpen={!!detailItem}
-        item={detailItem}
-        categoryName={detailItem?.categoryId ? categoryNameById.get(detailItem.categoryId) : undefined}
-        onClose={() => setDetailItem(null)}
-      />
+      <EquipmentDetailModal isOpen={!!detailItem} item={detailItem} onClose={() => setDetailItem(null)} />
     </div>
   );
 }

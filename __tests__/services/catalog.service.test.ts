@@ -1,6 +1,6 @@
 /**
  * @file catalog.service.test.ts
- * Unit tests for the Catalog Item API Service wrapper (docs/api/03-catalog.md).
+ * Unit tests for the Catalog Category API Service wrapper (docs/api/15-catalog-categories-items.md).
  */
 
 jest.mock('axios', () => {
@@ -39,70 +39,6 @@ import api from '../../src/services/api';
 import { catalogApiService } from '../../src/services/catalog.service';
 
 const mockApi = api as jest.Mocked<typeof api>;
-
-describe('catalogApiService — getCatalogItems()', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('should call GET /catalog-items with query params (UC 2.5)', async () => {
-    const mockResponse = { data: { success: true, data: [], meta: { page: 1, limit: 20, totalCount: 0 } } };
-    (mockApi.get as jest.Mock).mockResolvedValue(mockResponse);
-
-    await catalogApiService.getCatalogItems({ page: 1, limit: 20, search: 'loa', itemType: 'EQUIPMENT', isActive: true });
-
-    expect(mockApi.get).toHaveBeenCalledWith('/catalog-items', {
-      params: { page: 1, limit: 20, search: 'loa', itemType: 'EQUIPMENT', isActive: true },
-    });
-  });
-});
-
-describe('catalogApiService — createCatalogItem()', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('should call POST /catalog-items with payload (UC 2.5)', async () => {
-    const payload = { name: 'Loa Bose L1', description: 'Loa array công suất lớn', itemType: 'EQUIPMENT' as const, basePrice: 500000 };
-    const mockResponse = { data: { success: true, message: 'Catalog item created successfully.', data: { id: 'item-10' } } };
-    (mockApi.post as jest.Mock).mockResolvedValue(mockResponse);
-
-    const result = await catalogApiService.createCatalogItem(payload);
-
-    expect(mockApi.post).toHaveBeenCalledWith('/catalog-items', payload);
-    expect(result.data.id).toBe('item-10');
-  });
-});
-
-describe('catalogApiService — updateCatalogItem()', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('should call PUT /catalog-items/{id} with payload (UC 2.5)', async () => {
-    const mockResponse = { data: { success: true, message: 'Catalog item updated successfully.' } };
-    (mockApi.put as jest.Mock).mockResolvedValue(mockResponse);
-
-    await catalogApiService.updateCatalogItem('item-10', {
-      name: 'Loa Bose L1 Pro',
-      description: 'Bản nâng cấp',
-      basePrice: 550000,
-    });
-
-    expect(mockApi.put).toHaveBeenCalledWith('/catalog-items/item-10', {
-      name: 'Loa Bose L1 Pro',
-      description: 'Bản nâng cấp',
-      basePrice: 550000,
-    });
-  });
-});
-
-describe('catalogApiService — updateCatalogItemStatus()', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('should call PUT /catalog-items/{id}/deactivate with isActive (UC 2.5)', async () => {
-    const mockResponse = { data: { success: true, message: 'Catalog item status changed successfully.' } };
-    (mockApi.put as jest.Mock).mockResolvedValue(mockResponse);
-
-    await catalogApiService.updateCatalogItemStatus('item-10', { isActive: false });
-
-    expect(mockApi.put).toHaveBeenCalledWith('/catalog-items/item-10/deactivate', { isActive: false });
-  });
-});
 
 describe('catalogApiService — getCatalogCategories()', () => {
   beforeEach(() => jest.clearAllMocks());

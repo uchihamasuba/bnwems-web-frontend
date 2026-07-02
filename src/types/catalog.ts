@@ -1,44 +1,8 @@
-// UC 2.5 — Master Data & Policies: Catalog Management (docs/api/03-catalog.md)
-// Lưu ý: doc mới không còn `code`/`unit`/quantity/warehouse trên CatalogItem — thay bằng
-// `itemType` (enum) phân loại trực tiếp + `basePrice`. CatalogCategory nhóm CatalogItem một
-// cách tùy chọn qua `categoryId` (không còn lịch sử giá riêng, /prices, như bản cũ).
-
-export type CatalogItemType = 'SERVICE' | 'EQUIPMENT' | 'MATERIAL' | 'PACKAGE';
-
-// GET /api/v1/catalog-items, GET /api/v1/catalog-items/:id
-export interface CatalogItem {
-  id: string;
-  name: string;
-  description?: string;
-  itemType: CatalogItemType;
-  basePrice: number;
-  categoryId: string | null;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt?: string;
-}
-
-// POST /api/v1/catalog-items
-export interface CreateCatalogItemPayload {
-  name: string;
-  description?: string;
-  itemType: CatalogItemType;
-  basePrice: number;
-  categoryId?: string | null;
-}
-
-// PUT /api/v1/catalog-items/:id — itemType không nằm trong body update theo doc (bất biến sau khi tạo).
-export interface UpdateCatalogItemPayload {
-  name: string;
-  description?: string;
-  basePrice: number;
-  categoryId?: string | null;
-}
-
-// PUT /api/v1/catalog-items/:id/deactivate
-export interface UpdateCatalogItemStatusPayload {
-  isActive: boolean;
-}
+// UC 2.5 — Catalog Category Management (docs/api/15-catalog-categories-items.md)
+// Module CatalogItem cũ đã đổi tên thành Equipment ở backend — xem types/equipment.ts,
+// services/equipment.service.ts. File này chỉ còn giữ CatalogCategory vì
+// docs/api/15-catalog-categories-items.md vẫn khai báo /catalog-categories riêng, không đổi
+// theo Equipment (không có schema field chi tiết, giữ nguyên field cũ đã xác nhận hoạt động).
 
 // GET /api/v1/catalog-categories, GET /api/v1/catalog-categories/:id
 export interface CatalogCategory {
