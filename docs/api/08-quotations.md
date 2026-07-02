@@ -22,15 +22,16 @@ It manages `Quotation` records, which act as versioned proposals attached to an 
 ```json
 {
   "success": true,
+  "code": "MSG-QO-00",
   "data": [
     {
       "quotationId": 1,
       "orderId": 1,
       "version": 1,
-      "subtotal": 1500.00,
-      "tax": 150.00,
+      "subtotal": 1500000.00,
+      "tax": 150000.00,
       "discount": 0.00,
-      "totalAmount": 1650.00,
+      "totalAmount": 1650000.00,
       "status": "draft",
       "createdAt": "2026-06-22T10:00:00Z"
     }
@@ -46,19 +47,20 @@ It manages `Quotation` records, which act as versioned proposals attached to an 
 ```json
 {
   "success": true,
+  "code": "MSG-QO-00",
   "data": {
     "quotationId": 1,
     "orderId": 1,
     "version": 1,
-    "subtotal": 1500.00,
-    "tax": 150.00,
+    "subtotal": 1500000.00,
+    "tax": 150000.00,
     "discount": 0.00,
-    "totalAmount": 1650.00,
+    "totalAmount": 1650000.00,
     "items": [
       {
-        "catalogItemId": 1,
+        "equipmentItemId": 1,
         "quantity": 2,
-        "unitPrice": 750.00
+        "unitPrice": 750000.00
       }
     ],
     "status": "draft",
@@ -78,15 +80,15 @@ It manages `Quotation` records, which act as versioned proposals attached to an 
 - **Request Body:**
 ```json
 {
-  "subtotal": 1500.00,
-  "tax": 150.00,
+  "subtotal": 1500000.00,
+  "tax": 150000.00,
   "discount": 0.00,
-  "totalAmount": 1650.00,
+  "totalAmount": 1650000.00,
   "items": [
     {
-      "catalogItemId": 1,
+      "equipmentItemId": 1,
       "quantity": 2,
-      "unitPrice": 750.00
+      "unitPrice": 750000.00
     }
   ]
 }
@@ -95,6 +97,7 @@ It manages `Quotation` records, which act as versioned proposals attached to an 
 ```json
 {
   "success": true,
+  "code": "MSG-QO-00",
   "message": "Quotation created.",
   "data": { "quotationId": 2, "version": 2 }
 }
@@ -104,19 +107,19 @@ It manages `Quotation` records, which act as versioned proposals attached to an 
 - **Use Case:** UC 2.10 - Update Quotation
 - **Description:** Updates the details of an existing draft quotation. 
 - **Business Rules:**
-  - BR-10-04: Cannot update if `status` is `ACCEPTED` or `SENT` (throws MSG-UC10-04).
+  - BR-10-04: Cannot update if `status` is `confirmed` (throws MSG-UC10-04).
 - **Request Body:**
 ```json
 {
-  "subtotal": 2250.00,
-  "tax": 225.00,
+  "subtotal": 2250000.00,
+  "tax": 225000.00,
   "discount": 0.00,
-  "totalAmount": 2475.00,
+  "totalAmount": 2475000.00,
   "items": [
     {
-      "catalogItemId": 1,
+      "equipmentItemId": 1,
       "quantity": 3,
-      "unitPrice": 750.00
+      "unitPrice": 750000.00
     }
   ]
 }
@@ -125,19 +128,21 @@ It manages `Quotation` records, which act as versioned proposals attached to an 
 ```json
 {
   "success": true,
+  "code": "MSG-QO-00",
   "message": "Quotation updated successfully."
 }
 ```
 
-### `DELETE /api/v1/quotations/:id`
-- **Use Case:** UC 2.10 - Delete Quotation
-- **Description:** Deletes a draft quotation.
+### `PATCH /api/v1/quotations/:id/status`
+- **Use Case:** UC 2.10 - Soft Delete Quotation
+- **Description:** Soft-deletes a quotation.
 - **Business Rules:**
-  - BR-10-05: Cannot delete accepted quotations.
+  - BR-10-05: Cannot delete confirmed quotations.
 - **Response (200 OK):**
 ```json
 {
   "success": true,
+  "code": "MSG-QO-00",
   "message": "Quotation deleted successfully."
 }
 ```
@@ -146,13 +151,14 @@ It manages `Quotation` records, which act as versioned proposals attached to an 
 - **Use Case:** UC 2.10 - Confirm Quotation
 - **Description:** Confirms the quotation as agreed by the customer. 
 - **Business Rules:**
-  - BR-10-06: Transitions the quotation status to `ACCEPTED`.
-  - BR-10-07: Automatically updates the parent `Order` status to `QUOTED`.
+  - BR-10-06: Transitions the quotation status to `confirmed`.
+  - BR-10-07: Automatically updates the parent `Order` status to `confirmed` (if it was `draft`).
 - **Response (200 OK):**
 ```json
 {
   "success": true,
+  "code": "MSG-QO-00",
   "message": "Quotation confirmed.",
-  "data": { "status": "accepted" }
+  "data": { "status": "confirmed" }
 }
 ```

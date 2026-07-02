@@ -19,17 +19,61 @@ It deals with financial transactions (`Payment`) and the final reconciliation of
 ```json
 {
   "success": true,
+  "code": "MSG-PM-00",
   "data": [
     {
       "paymentId": 1,
-      "amount": 500.00,
-      "paymentType": "deposit",
-      "paymentMethod": "bank_transfer",
-      "status": "completed",
-      "paymentDate": "2026-06-22T10:00:00Z",
-      "evidences": [{ "fileUrl": "https://storage.example.com/receipt.jpg" }]
+      "paymentRequestId": 1,
+      "orderId": 1,
+      "amount": 500000.00,
+      "method": "vnpay_qr",
+      "status": "success",
+      "paidAt": "2026-06-22T10:00:00Z",
+      "confirmedBy": 2,
+      "confirmedAt": "2026-06-22T10:15:00Z"
     }
   ]
+}
+```
+
+### `GET /api/v1/orders/:id/payment-requests`
+- **Use Case:** Payment Confirmation (List)
+- **Description:** Hiển thị danh sách payment request chờ duyệt của đơn hàng.
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "code": "MSG-PM-00",
+  "data": [
+    {
+      "paymentRequestId": 1,
+      "amount": 500000.00,
+      "paymentType": "deposit",
+      "status": "pending",
+      "createdAt": "2026-06-22T09:00:00Z"
+    }
+  ]
+}
+```
+
+### `GET /api/v1/payment-requests/:id`
+- **Use Case:** Payment Confirmation (Detail)
+- **Description:** Lấy chi tiết payment request và bằng chứng thanh toán.
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "code": "MSG-PM-00",
+  "data": {
+    "paymentRequestId": 1,
+    "orderId": 1,
+    "amount": 500000.00,
+    "paymentType": "deposit",
+    "paymentMethod": "bank_transfer",
+    "status": "pending",
+    "evidenceUrl": "https://storage.example.com/receipt_submitted.jpg",
+    "createdAt": "2026-06-22T09:00:00Z"
+  }
 }
 ```
 
@@ -41,7 +85,7 @@ It deals with financial transactions (`Payment`) and the final reconciliation of
 - **Request Body:**
 ```json
 {
-  "amount": 500.00,
+  "amount": 500000.00,
   "paymentType": "deposit",
   "paymentMethod": "vnpay_qr"
 }
@@ -50,21 +94,22 @@ It deals with financial transactions (`Payment`) and the final reconciliation of
 ```json
 {
   "success": true,
+  "code": "MSG-PM-00",
   "message": "Payment request created.",
   "data": { "paymentRequestId": 1, "paymentUrl": "vnpay-qr-url" }
 }
 ```
 
-### `PUT /api/v1/payments/:id/confirm`
+### `PUT /api/v1/payment-requests/:id/confirm`
 - **Use Case:** UC 2.19 - Confirm Deposit / Confirm Final Payment
 - **Description:** Manager confirms a payment manually after verifying evidence.
 - **Business Rules:**
-  - BR-19-02: Updates payment status to `COMPLETED`.
-  - BR-19-03: Triggers order status change (e.g. `DEPOSIT_PAID`) if applicable.
+  - BR-19-02: Updates payment status to `completed`.
+  - BR-19-03: Triggers order status change (e.g. `deposit_paid`) if applicable.
 - **Request Body:**
 ```json
 {
-  "status": "completed",
+  "status": "completed", // or "failed"
   "evidenceUrl": "https://storage.example.com/receipt.jpg"
 }
 ```
@@ -72,26 +117,73 @@ It deals with financial transactions (`Payment`) and the final reconciliation of
 ```json
 {
   "success": true,
+  "code": "MSG-PM-00",
   "message": "Payment confirmed successfully."
 }
 ```
 
 ## 2. Settlement Management (UC 2.19 & UC 2.30)
 
+### `GET /api/v1/orders/:id/settlement`
+- **Use Case:** UC 2.30 - View Settlement (Field)
+- **Description:** Retrieves the existing settlement record for an order.
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "code": "MSG-PM-00",
+  "data": {
+    "settlementId": 1,
+    "orderId": 1,
+    "originalValue": 1500000.00,
+    "changeAdjustment": 0.00,
+    "additionalFee": 100000.00,
+    "compensation": 0,
+    "discount": 50000.00,
+    "totalAmount": 1550000.00,
+    "totalPaid": 500000.00,
+    "remainingAmount": 1050000.00,
+    "settlementLines": [
+      {
+        "lineType": "additional_fee",
+        "amount": 100000.00,
+        "note": "Phụ phí làm thêm giờ"
+      }
+    ],
+    "evidences": [{ "fileUrl": "https://storage.example.com/agreement.jpg" }]
+  }
+}
+```
+
 ### `POST /api/v1/orders/:id/settlement`
 - **Use Case:** UC 2.30 - Record Settlement (Field)
 - **Description:** Leader staff records on-site settlement info, including extra charges or compensation.
 - **Business Rules:**
-  - BR-30-01: `remainingAmount` = `originalValue` + `additionalFees` - `compensation` - `paidAmount`.
-  - BR-30-02: Requires evidence (e.g. signed agreement) if `additionalFees` or `compensation` > 0.
+  - BR-30-01: `remainingAmount` = `originalValue` + `changeAdjustment` + `additionalFee` - `compensation` - `discount` - `totalPaid`.
+  - BR-30-02: Requires evidence (e.g. signed agreement) if `additionalFee`, `compensation`, or `discount` > 0.
 - **Request Body:**
 ```json
 {
-  "originalValue": 1500.00,
-  "additionalFees": 100.00,
+  "originalValue": 1500000.00,
+  "changeAdjustment": 0.00,
+  "additionalFee": 100000.00,
   "compensation": 0,
-  "paidAmount": 500.00,
-  "remainingAmount": 1100.00,
+  "discount": 50000.00,
+  "totalAmount": 1550000.00,
+  "totalPaid": 500000.00,
+  "remainingAmount": 1050000.00,
+  "settlementLines": [
+    {
+      "lineType": "additional_fee",
+      "amount": 100000.00,
+      "note": "Phụ phí làm thêm giờ"
+    },
+    {
+      "lineType": "discount",
+      "amount": 50000.00,
+      "note": "Giảm giá khách quen"
+    }
+  ],
   "evidences": [{ "fileUrl": "https://storage.example.com/agreement.jpg" }]
 }
 ```
@@ -99,6 +191,7 @@ It deals with financial transactions (`Payment`) and the final reconciliation of
 ```json
 {
   "success": true,
+  "code": "MSG-PM-00",
   "message": "Field settlement recorded.",
   "data": { "settlementId": 1 }
 }
@@ -108,7 +201,7 @@ It deals with financial transactions (`Payment`) and the final reconciliation of
 - **Use Case:** UC 2.19 - Confirm Settlement
 - **Description:** Manager reviews and confirms the final settlement amount after the event.
 - **Business Rules:**
-  - BR-19-05: Confirms the `Settlement` record, preparing the order for `COMPLETED` status.
+  - BR-19-05: Confirms the `Settlement` record, preparing the order for `completed` status.
 - **Request Body:**
 ```json
 {
@@ -119,6 +212,7 @@ It deals with financial transactions (`Payment`) and the final reconciliation of
 ```json
 {
   "success": true,
+  "code": "MSG-PM-00",
   "message": "Settlement confirmed."
 }
 ```
