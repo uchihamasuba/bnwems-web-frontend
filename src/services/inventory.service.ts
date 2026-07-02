@@ -4,7 +4,7 @@ import type {
   CreateInventoryRequest,
   GetInventoryAvailabilityQuery,
   GetInventoryQuery,
-  GetWarehouseHistoriesQuery,
+  GetInventoryReportsQuery,
   ReserveInventoryRequest,
   ReturnInventoryRequest,
   UpdateInventoryRequest,
@@ -17,13 +17,13 @@ export const inventoryApiService = {
     return response.data;
   },
 
-  /** POST /api/v1/inventory — ngoài doc 05-warehouse-inventory.md, xem types/inventory.ts */
+  /** POST /api/v1/inventory (UC 2.13) */
   async createInventory(body: CreateInventoryRequest) {
     const response = await api.post('/inventory', body);
     return response.data;
   },
 
-  /** PUT /api/v1/inventory/:id — ngoài doc 05-warehouse-inventory.md, xem types/inventory.ts */
+  /** PUT /api/v1/inventory/:id (UC 2.13) */
   async updateInventory(id: string, body: UpdateInventoryRequest) {
     const response = await api.put(`/inventory/${id}`, body);
     return response.data;
@@ -41,21 +41,21 @@ export const inventoryApiService = {
     return response.data;
   },
 
-  /** GET /api/v1/warehouse-histories (UC 2.23) */
-  async getWarehouseHistories(params?: GetWarehouseHistoriesQuery) {
-    const response = await api.get('/warehouse-histories', { params });
+  /** GET /api/v1/inventory/inventory-reports (UC 2.23) */
+  async getInventoryReports(params?: GetInventoryReportsQuery) {
+    const response = await api.get('/inventory/inventory-reports', { params });
     return response.data;
   },
 
-  /** POST /api/v1/warehouse/checkout (UC 2.23) */
-  async checkoutWarehouse(body: CheckoutInventoryRequest) {
-    const response = await api.post('/warehouse/checkout', body);
+  /** POST /api/v1/inventory/checkout (UC 2.23) */
+  async checkoutInventory(body: CheckoutInventoryRequest) {
+    const response = await api.post('/inventory/checkout', body);
     return response.data;
   },
 
-  /** POST /api/v1/warehouse/return (UC 2.23) */
-  async returnWarehouse(body: ReturnInventoryRequest) {
-    const response = await api.post('/warehouse/return', body);
+  /** POST /api/v1/inventory/return (UC 2.23) */
+  async returnInventory(body: ReturnInventoryRequest) {
+    const response = await api.post('/inventory/return', body);
     return response.data;
   },
 };

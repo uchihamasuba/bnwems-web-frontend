@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, Pencil, Search, Boxes, CheckCircle2, HardHat, Wrench } from 'lucide-react';
 import { catalogApiService } from '@/services/catalog.service';
+import { equipmentApiService } from '@/services/equipment.service';
 import { inventoryApiService } from '@/services/inventory.service';
 import { Table, TableColumn } from '@/components/ui/Table';
 import { Input } from '@/components/ui/Input';
@@ -13,7 +14,8 @@ import { Badge, getStatusBadgeVariant } from '@/components/ui/Badge';
 import { CategoryFormModal, CategoryFormValues } from '@/components/catalog/CategoryFormModal';
 import { usePermission } from '@/hooks/usePermission';
 import { formatDate } from '@/utils/formatDate';
-import type { CatalogCategory, CatalogItem } from '@/types/catalog';
+import type { CatalogCategory } from '@/types/catalog';
+import type { EquipmentItem } from '@/types/equipment';
 import type { InventoryRow } from '@/types/inventory';
 
 interface EquipmentRow {
@@ -22,7 +24,7 @@ interface EquipmentRow {
   itemName: string;
   totalQuantity: number;
   availableQuantity: number;
-  checkedOutQuantity: number;
+  reservedQuantity: number;
   damagedQuantity: number;
 }
 
@@ -60,34 +62,36 @@ export default function Page() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag toggled before/after the fetch below, not a render loop
     setIsLoading(true);
-    Promise.all([
-      catalogApiService.getCatalogCategory(id),
-      catalogApiService.getCatalogItems({ limit: 200 }),
-      inventoryApiService.getInventory({ limit: 500 }),
-    ])
-      .then(([categoryRes, itemsRes, inventoryRes]) => {
-        setCategory(categoryRes.data);
+    catalogApiService.getCatalogCategory(id).then((categoryRes) => {
+      setCategory(categoryRes.data);
 
-        const categoryItems = (itemsRes.data as CatalogItem[]).filter((item) => item.categoryId === id);
-        const categoryItemIds = new Set(categoryItems.map((item) => item.id));
-        const itemsById = new Map(categoryItems.map((item) => [item.id, item]));
+      // Equipment.category giờ là chuỗi tên (không còn categoryId liên kết quan hệ) — khớp
+      // theo tên danh mục thay vì id.
+      Promise.all([
+        equipmentApiService.getEquipment({ category: categoryRes.data.name, limit: 200 }),
+        inventoryApiService.getInventory({ limit: 500 }),
+      ])
+        .then(([itemsRes, inventoryRes]) => {
+          const categoryItems = itemsRes.data as EquipmentItem[];
+          const categoryItemIds = new Set(categoryItems.map((item) => item.equipmentItemId));
+          const itemsById = new Map(categoryItems.map((item) => [item.equipmentItemId, item]));
 
-        const rows: EquipmentRow[] = (inventoryRes.data as InventoryRow[])
-          .filter((row) => categoryItemIds.has(row.catalogItemId))
-          .map((row) => ({
-            inventoryId: row.id,
-            itemId: row.catalogItemId,
-            itemName: itemsById.get(row.catalogItemId)?.name ?? row.catalogItemId,
-            totalQuantity:
-              row.availableQuantity + row.reservedQuantity + row.checkedOutQuantity + row.damagedQuantity + row.lostQuantity,
-            availableQuantity: row.availableQuantity,
-            checkedOutQuantity: row.checkedOutQuantity,
-            damagedQuantity: row.damagedQuantity,
-          }));
+          const rows: EquipmentRow[] = (inventoryRes.data as InventoryRow[])
+            .filter((row) => categoryItemIds.has(row.equipmentItemId))
+            .map((row) => ({
+              inventoryId: row.inventoryId,
+              itemId: row.equipmentItemId,
+              itemName: itemsById.get(row.equipmentItemId)?.name ?? row.equipmentItemId,
+              totalQuantity: row.totalQuantity,
+              availableQuantity: row.availableQuantity,
+              reservedQuantity: row.reservedQuantity,
+              damagedQuantity: row.damagedQuantity,
+            }));
 
-        setEquipmentRows(rows);
-      })
-      .finally(() => setIsLoading(false));
+          setEquipmentRows(rows);
+        })
+        .finally(() => setIsLoading(false));
+    });
   }, [id, refreshToken]);
 
   const stats = useMemo(() => {
@@ -95,10 +99,10 @@ export default function Page() {
       (acc, row) => ({
         total: acc.total + row.totalQuantity,
         available: acc.available + row.availableQuantity,
-        inUse: acc.inUse + row.checkedOutQuantity,
+        reserved: acc.reserved + row.reservedQuantity,
         maintenance: acc.maintenance + row.damagedQuantity,
       }),
-      { total: 0, available: 0, inUse: 0, maintenance: 0 }
+      { total: 0, available: 0, reserved: 0, maintenance: 0 }
     );
   }, [equipmentRows]);
 
@@ -210,7 +214,7 @@ export default function Page() {
           <div className="mt-4 grid grid-cols-2 gap-3">
             <StatTile icon={Boxes} iconClassName="bg-blue-100 text-blue-600" value={stats.total} label="Tổng số" />
             <StatTile icon={CheckCircle2} iconClassName="bg-green-100 text-green-600" value={stats.available} label="Có sẵn" />
-            <StatTile icon={HardHat} iconClassName="bg-amber-100 text-amber-600" value={stats.inUse} label="Đang sử dụng" />
+            <StatTile icon={HardHat} iconClassName="bg-amber-100 text-amber-600" value={stats.reserved} label="Đã giữ chỗ" />
             <StatTile icon={Wrench} iconClassName="bg-red-100 text-red-600" value={stats.maintenance} label="Đang sửa chữa" />
           </div>
         </div>

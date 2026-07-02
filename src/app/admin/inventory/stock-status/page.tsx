@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Eye, Pencil, Plus, Wrench } from 'lucide-react';
-import { catalogApiService } from '@/services/catalog.service';
+import { equipmentApiService } from '@/services/equipment.service';
 import { inventoryApiService } from '@/services/inventory.service';
 import { Table, TableColumn } from '@/components/ui/Table';
 import { Pagination } from '@/components/ui/Pagination';
@@ -14,8 +14,7 @@ import { InventoryDetailModal } from '@/components/inventory/InventoryDetailModa
 import { InventoryFormModal, InventoryFormValues } from '@/components/inventory/InventoryFormModal';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
-import { formatDate } from '@/utils/formatDate';
-import type { CatalogItem } from '@/types/catalog';
+import type { EquipmentItem } from '@/types/equipment';
 import type { InventoryRow } from '@/types/inventory';
 
 interface StockRow extends InventoryRow {
@@ -26,7 +25,7 @@ export default function Page() {
   const { can } = usePermission();
   const canManage = can('master-data:manage');
 
-  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
+  const [equipmentItems, setEquipmentItems] = useState<EquipmentItem[]>([]);
   const [itemFilter, setItemFilter] = useState('');
   const [rows, setRows] = useState<StockRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -41,7 +40,7 @@ export default function Page() {
   const refetchRows = () => setRefreshToken((t) => t + 1);
 
   useEffect(() => {
-    catalogApiService.getCatalogItems({ limit: 200 }).then((res) => setCatalogItems(res.data));
+    equipmentApiService.getEquipment({ limit: 200 }).then((res) => setEquipmentItems(res.data));
   }, []);
 
   useEffect(() => {
@@ -49,16 +48,16 @@ export default function Page() {
     setIsLoading(true);
     inventoryApiService
       .getInventory({
-        catalogItemId: itemFilter || undefined,
+        equipmentItemId: itemFilter || undefined,
         page: pagination.currentPage,
         limit: pagination.limit,
       })
       .then((res) => {
-        const itemsById = new Map(catalogItems.map((item) => [item.id, item]));
+        const itemsById = new Map(equipmentItems.map((item) => [item.equipmentItemId, item]));
         setRows(
           (res.data as InventoryRow[]).map((row) => ({
             ...row,
-            itemName: itemsById.get(row.catalogItemId)?.name ?? row.catalogItemId,
+            itemName: itemsById.get(row.equipmentItemId)?.name ?? row.equipmentItemId,
           }))
         );
         updatePagination({
@@ -68,15 +67,14 @@ export default function Page() {
       })
       .finally(() => setIsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemFilter, pagination.currentPage, pagination.limit, catalogItems, refreshToken]);
+  }, [itemFilter, pagination.currentPage, pagination.limit, equipmentItems, refreshToken]);
 
   const handleCreateSubmit = async (values: InventoryFormValues) => {
     setIsSubmittingForm(true);
     setFormError('');
     try {
       await inventoryApiService.createInventory({
-        warehouseId: values.warehouseId,
-        catalogItemId: values.catalogItemId,
+        equipmentItemId: values.equipmentItemId,
         availableQuantity: values.availableQuantity,
       });
       setFormModal(null);
@@ -92,12 +90,10 @@ export default function Page() {
     setIsSubmittingForm(true);
     setFormError('');
     try {
-      await inventoryApiService.updateInventory(row.id, {
+      await inventoryApiService.updateInventory(row.inventoryId, {
         availableQuantity: values.availableQuantity,
         reservedQuantity: values.reservedQuantity,
-        checkedOutQuantity: values.checkedOutQuantity,
         damagedQuantity: values.damagedQuantity,
-        lostQuantity: values.lostQuantity,
       });
       setFormModal(null);
       refetchRows();
@@ -108,14 +104,14 @@ export default function Page() {
     }
   };
 
-  const itemOptions = catalogItems.map((item) => ({ value: item.id, label: item.name }));
+  const itemOptions = equipmentItems.map((item) => ({ value: item.equipmentItemId, label: item.name }));
 
   const columns: TableColumn<StockRow>[] = [
-    { key: 'catalogItemId', label: 'Mã thiết bị' },
+    { key: 'equipmentItemId', label: 'Mã thiết bị' },
     { key: 'itemName', label: 'Tên thiết bị' },
+    { key: 'totalQuantity', label: 'Tổng số lượng' },
     { key: 'availableQuantity', label: 'Có sẵn' },
     { key: 'reservedQuantity', label: 'Đã giữ chỗ' },
-    { key: 'checkedOutQuantity', label: 'Đang sử dụng' },
     {
       key: 'damagedQuantity',
       label: 'Trạng thái',
@@ -124,11 +120,6 @@ export default function Page() {
           {row.damagedQuantity > 0 ? `Hỏng: ${row.damagedQuantity}` : 'Bình thường'}
         </Badge>
       ),
-    },
-    {
-      key: 'updatedAt',
-      label: 'Cập nhật gần nhất',
-      render: (row) => formatDate(row.updatedAt),
     },
     {
       key: 'actions',
@@ -165,9 +156,7 @@ export default function Page() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Tình trạng tồn kho</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Số lượng có sẵn / đã giữ chỗ / đang sử dụng / hỏng theo từng thiết bị (UC 2.13).
-          </p>
+          <p className="mt-1 text-sm text-slate-500">Số lượng có sẵn / đã giữ chỗ / hỏng theo từng thiết bị (UC 2.13).</p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/admin/inventory/maintenance">
@@ -200,7 +189,7 @@ export default function Page() {
         </div>
 
         <div className="mt-4">
-          <Table columns={columns} rows={rows} rowKey={(row) => row.id} isLoading={isLoading} />
+          <Table columns={columns} rows={rows} rowKey={(row) => row.inventoryId} isLoading={isLoading} />
         </div>
         <Pagination pagination={pagination} onPageChange={setPage} />
       </div>
@@ -211,7 +200,7 @@ export default function Page() {
         isOpen={!!formModal}
         mode={formModal?.mode ?? 'create'}
         row={formModal?.row}
-        catalogItems={catalogItems}
+        equipmentItems={equipmentItems}
         isSubmitting={isSubmittingForm}
         errorMessage={formError}
         onClose={() => {

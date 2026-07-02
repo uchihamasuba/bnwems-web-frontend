@@ -5,17 +5,14 @@ import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
-import type { CatalogItem } from '@/types/catalog';
+import type { EquipmentItem } from '@/types/equipment';
 import type { InventoryRow } from '@/types/inventory';
 
 export interface InventoryFormValues {
-  warehouseId: string;
-  catalogItemId: string;
+  equipmentItemId: string;
   availableQuantity: number;
   reservedQuantity: number;
-  checkedOutQuantity: number;
   damagedQuantity: number;
-  lostQuantity: number;
 }
 
 interface InventoryFormModalProps {
@@ -23,20 +20,17 @@ interface InventoryFormModalProps {
   onClose: () => void;
   mode: 'create' | 'edit';
   row?: InventoryRow | null;
-  catalogItems: CatalogItem[];
+  equipmentItems: EquipmentItem[];
   isSubmitting: boolean;
   errorMessage?: string;
   onSubmit: (values: InventoryFormValues) => void;
 }
 
 const EMPTY_VALUES: InventoryFormValues = {
-  warehouseId: '',
-  catalogItemId: '',
+  equipmentItemId: '',
   availableQuantity: 0,
   reservedQuantity: 0,
-  checkedOutQuantity: 0,
   damagedQuantity: 0,
-  lostQuantity: 0,
 };
 
 export function InventoryFormModal({
@@ -44,7 +38,7 @@ export function InventoryFormModal({
   onClose,
   mode,
   row,
-  catalogItems,
+  equipmentItems,
   isSubmitting,
   errorMessage,
   onSubmit,
@@ -60,13 +54,10 @@ export function InventoryFormModal({
       setValues(
         mode === 'edit' && row
           ? {
-              warehouseId: row.warehouseId,
-              catalogItemId: row.catalogItemId,
+              equipmentItemId: row.equipmentItemId,
               availableQuantity: row.availableQuantity,
               reservedQuantity: row.reservedQuantity,
-              checkedOutQuantity: row.checkedOutQuantity,
               damagedQuantity: row.damagedQuantity,
-              lostQuantity: row.lostQuantity,
             }
           : EMPTY_VALUES
       );
@@ -75,17 +66,11 @@ export function InventoryFormModal({
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (mode === 'create' && (!values.warehouseId.trim() || !values.catalogItemId)) {
-      setValidationError('Vui lòng nhập mã kho và chọn thiết bị');
+    if (mode === 'create' && !values.equipmentItemId) {
+      setValidationError('Vui lòng chọn thiết bị');
       return;
     }
-    const quantities = [
-      values.availableQuantity,
-      values.reservedQuantity,
-      values.checkedOutQuantity,
-      values.damagedQuantity,
-      values.lostQuantity,
-    ];
+    const quantities = [values.availableQuantity, values.reservedQuantity, values.damagedQuantity];
     if (quantities.some((quantity) => quantity < 0)) {
       setValidationError('Số lượng không được âm');
       return;
@@ -113,22 +98,15 @@ export function InventoryFormModal({
       footer={footer}
     >
       <form id="inventory-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <Input
-          label="Mã kho"
-          required
-          disabled={mode === 'edit'}
-          value={values.warehouseId}
-          onChange={(e) => setValues((v) => ({ ...v, warehouseId: e.target.value }))}
-          helpText={mode === 'create' ? 'Mã kho nội bộ (vd: wh-1)' : 'Không thể đổi kho sau khi tạo'}
-        />
         <Select
           label="Thiết bị"
           required
           disabled={mode === 'edit'}
-          value={values.catalogItemId}
-          onChange={(e) => setValues((v) => ({ ...v, catalogItemId: e.target.value }))}
-          options={catalogItems.map((item) => ({ value: item.id, label: item.name }))}
+          value={values.equipmentItemId}
+          onChange={(e) => setValues((v) => ({ ...v, equipmentItemId: e.target.value }))}
+          options={equipmentItems.map((item) => ({ value: item.equipmentItemId, label: item.name }))}
           placeholder="Chọn thiết bị"
+          helpText={mode === 'edit' ? 'Không thể đổi thiết bị sau khi tạo' : undefined}
         />
         <Input
           label="Có sẵn"
@@ -148,25 +126,11 @@ export function InventoryFormModal({
               onChange={(e) => setValues((v) => ({ ...v, reservedQuantity: Number(e.target.value) }))}
             />
             <Input
-              label="Đang sử dụng"
-              type="number"
-              min={0}
-              value={values.checkedOutQuantity}
-              onChange={(e) => setValues((v) => ({ ...v, checkedOutQuantity: Number(e.target.value) }))}
-            />
-            <Input
               label="Hỏng"
               type="number"
               min={0}
               value={values.damagedQuantity}
               onChange={(e) => setValues((v) => ({ ...v, damagedQuantity: Number(e.target.value) }))}
-            />
-            <Input
-              label="Mất"
-              type="number"
-              min={0}
-              value={values.lostQuantity}
-              onChange={(e) => setValues((v) => ({ ...v, lostQuantity: Number(e.target.value) }))}
             />
           </>
         )}

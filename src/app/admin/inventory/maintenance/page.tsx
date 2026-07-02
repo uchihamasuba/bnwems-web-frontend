@@ -2,14 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
-import { catalogApiService } from '@/services/catalog.service';
+import { equipmentApiService } from '@/services/equipment.service';
 import { inventoryApiService } from '@/services/inventory.service';
 import { Table, TableColumn } from '@/components/ui/Table';
 import { Input } from '@/components/ui/Input';
 import { Badge, getStatusBadgeVariant } from '@/components/ui/Badge';
 import { useDebounce } from '@/hooks/useDebounce';
-import { formatDate } from '@/utils/formatDate';
-import type { CatalogItem } from '@/types/catalog';
+import type { EquipmentItem } from '@/types/equipment';
 import type { InventoryRow } from '@/types/inventory';
 
 interface MaintenanceRow {
@@ -18,7 +17,6 @@ interface MaintenanceRow {
   itemName: string;
   damagedQuantity: number;
   totalQuantity: number;
-  updatedAt: string;
 }
 
 export default function Page() {
@@ -28,20 +26,18 @@ export default function Page() {
   const debouncedSearch = useDebounce(search, 400);
 
   useEffect(() => {
-    Promise.all([catalogApiService.getCatalogItems({ limit: 200 }), inventoryApiService.getInventory({ limit: 500 })])
+    Promise.all([equipmentApiService.getEquipment({ limit: 200 }), inventoryApiService.getInventory({ limit: 500 })])
       .then(([itemsRes, inventoryRes]) => {
-        const itemsById = new Map((itemsRes.data as CatalogItem[]).map((item) => [item.id, item]));
+        const itemsById = new Map((itemsRes.data as EquipmentItem[]).map((item) => [item.equipmentItemId, item]));
 
         const maintenanceRows: MaintenanceRow[] = (inventoryRes.data as InventoryRow[])
           .filter((row) => row.damagedQuantity > 0)
           .map((row) => ({
-            inventoryId: row.id,
-            itemId: row.catalogItemId,
-            itemName: itemsById.get(row.catalogItemId)?.name ?? row.catalogItemId,
+            inventoryId: row.inventoryId,
+            itemId: row.equipmentItemId,
+            itemName: itemsById.get(row.equipmentItemId)?.name ?? row.equipmentItemId,
             damagedQuantity: row.damagedQuantity,
-            totalQuantity:
-              row.availableQuantity + row.reservedQuantity + row.checkedOutQuantity + row.damagedQuantity + row.lostQuantity,
-            updatedAt: row.updatedAt,
+            totalQuantity: row.totalQuantity,
           }));
 
         setRows(maintenanceRows);
@@ -59,11 +55,6 @@ export default function Page() {
     { key: 'itemName', label: 'Tên thiết bị' },
     { key: 'damagedQuantity', label: 'Số lượng hỏng' },
     { key: 'totalQuantity', label: 'Tổng số lượng' },
-    {
-      key: 'updatedAt',
-      label: 'Cập nhật gần nhất',
-      render: (row) => formatDate(row.updatedAt),
-    },
     {
       key: 'status',
       label: 'Trạng thái',

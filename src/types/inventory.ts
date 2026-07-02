@@ -1,61 +1,53 @@
-// UC 2.13 / UC 2.23 — Inventory & Warehouse Management (docs/api/05-warehouse-inventory.md)
-// Lưu ý: doc API mới KHÔNG còn endpoint liệt kê kho (GET /warehouses) — warehouseId chỉ
-// dùng để lọc/tham chiếu, không có cách tra tên/địa chỉ kho từ FE nữa.
+// UC 2.13 / UC 2.23 — Inventory Management (docs/api/05-warehouse-inventory.md)
+// Entity `Warehouse` đã bị xóa bỏ hoàn toàn khỏi contract mới — không còn warehouseId,
+// checkedOutQuantity, lostQuantity trên Inventory; thêm totalQuantity trả thẳng từ API (không
+// cần tự cộng dồn ở client nữa). catalogItemId đổi tên thành equipmentItemId (xem
+// types/equipment.ts — Equipment là CatalogItem cũ). WarehouseHistory đổi thành InventoryReport.
 
 // GET /api/v1/inventory
 export interface InventoryRow {
-  id: string;
-  warehouseId: string;
-  catalogItemId: string;
+  inventoryId: string;
+  equipmentItemId: string;
+  totalQuantity: number;
   availableQuantity: number;
   reservedQuantity: number;
-  checkedOutQuantity: number;
   damagedQuantity: number;
-  lostQuantity: number;
-  updatedAt: string;
 }
 
 export interface GetInventoryQuery {
-  warehouseId?: string;
-  catalogItemId?: string;
+  equipmentItemId?: string;
   page?: number;
   limit?: number;
 }
 
-// POST /api/v1/inventory — KHÔNG có trong docs/api/05-warehouse-inventory.md. Thêm tạm ở
-// phía code/mock để hỗ trợ UI "Thêm tồn kho" ở /admin/inventory/stock-status; cần đồng bộ
-// lại doc + backend thật khi có endpoint chính thức.
+// POST /api/v1/inventory
 export interface CreateInventoryRequest {
-  warehouseId: string;
-  catalogItemId: string;
+  equipmentItemId: string;
   availableQuantity: number;
 }
 
-// PUT /api/v1/inventory/:id — KHÔNG có trong docs/api/05-warehouse-inventory.md. Thêm tạm để
-// hỗ trợ UI "Sửa tồn kho" (điều chỉnh số lượng thủ công); cần đồng bộ lại doc + backend thật.
+// PUT /api/v1/inventory/:id
 export interface UpdateInventoryRequest {
   availableQuantity: number;
   reservedQuantity: number;
-  checkedOutQuantity: number;
   damagedQuantity: number;
-  lostQuantity: number;
 }
 
 // GET /api/v1/inventory/availability
 export interface InventoryAvailability {
-  catalogItemId: string;
+  equipmentItemId: string;
   isAvailable: boolean;
   availableQuantityOnDate: number;
 }
 
 export interface GetInventoryAvailabilityQuery {
   eventDate: string;
-  itemId: string;
+  equipmentItemId: string;
 }
 
 // POST /api/v1/inventory/reserve
 export interface ReserveInventoryItem {
-  catalogItemId: string;
+  equipmentItemId: string;
   quantity: number;
 }
 
@@ -64,46 +56,44 @@ export interface ReserveInventoryRequest {
   items: ReserveInventoryItem[];
 }
 
-// GET /api/v1/warehouse-histories
-export type WarehouseTransactionType = 'CHECKOUT' | 'RETURN' | 'ADJUSTMENT';
+// GET /api/v1/inventory/inventory-reports
+export type InventoryReportType = 'checkout' | 'return' | 'adjustment' | 'damage_loss';
 
-export interface WarehouseHistory {
-  id: string;
-  warehouseId: string;
-  transactionType: WarehouseTransactionType;
-  performedBy: string;
+export interface InventoryReport {
+  inventoryReportId: string;
+  orderId: string;
+  reportType: InventoryReportType;
+  reportedBy: string;
   createdAt: string;
 }
 
-export interface GetWarehouseHistoriesQuery {
-  transactionType?: WarehouseTransactionType;
+export interface GetInventoryReportsQuery {
+  reportType?: InventoryReportType;
   page?: number;
   limit?: number;
 }
 
-// POST /api/v1/warehouse/checkout
+// POST /api/v1/inventory/checkout
 export interface CheckoutInventoryItem {
-  catalogItemId: string;
+  equipmentItemId: string;
   quantity: number;
 }
 
 export interface CheckoutInventoryRequest {
-  warehouseId: string;
   orderId: string;
   items: CheckoutInventoryItem[];
 }
 
-// POST /api/v1/warehouse/return
-export type InventoryItemCondition = 'GOOD' | 'DAMAGED';
+// POST /api/v1/inventory/return
+export type InventoryItemCondition = 'good' | 'damaged';
 
 export interface ReturnInventoryItem {
-  catalogItemId: string;
+  equipmentItemId: string;
   quantity: number;
   condition: InventoryItemCondition;
 }
 
 export interface ReturnInventoryRequest {
-  warehouseId: string;
   orderId: string;
   items: ReturnInventoryItem[];
 }
