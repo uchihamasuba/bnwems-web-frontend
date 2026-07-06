@@ -927,6 +927,154 @@ export const mockSettlementPreviews: MockSettlementPreview[] = [
   },
 ];
 
+// ===== Supplier & SupplierTransaction (UC 2.16 — docs/api/04-suppliers.md) =====
+export type SupplierStatus = 'active' | 'inactive';
+export type SupplierTransactionStatus = 'draft' | 'approved' | 'waiting_for_approval' | 'received' | 'returned' | 'cancelled';
+export type SupplierTransactionType = 'rental' | 'purchase';
+
+export interface MockSupplier {
+  id: string;
+  name: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+  address: string;
+  serviceCategory: string; // MOCK — không có trong docs/api/04-suppliers.md
+  rating: number;          // MOCK — không có trong docs/api/04-suppliers.md
+  status: SupplierStatus;
+  createdAt: string;
+}
+
+export interface MockSupplierTransaction {
+  id: string;
+  supplierId: string;
+  orderId: string;
+  transactionType: SupplierTransactionType;
+  totalCost: number;
+  depositAmount: number;
+  itemDescription: string;
+  status: SupplierTransactionStatus;
+  createdAt: string;
+}
+
+interface SupplierMockStore {
+  suppliers: MockSupplier[];
+  nextSupplierSeq: number;
+}
+
+interface SupplierTransactionMockStore {
+  transactions: MockSupplierTransaction[];
+  nextTransactionSeq: number;
+}
+
+declare global {
+  var __bnwemsSupplierStore: SupplierMockStore | undefined;
+  var __bnwemsSupplierTransactionStore: SupplierTransactionMockStore | undefined;
+}
+
+function createInitialSupplierStore(): SupplierMockStore {
+  return {
+    suppliers: [
+      {
+        id: 'sup-1',
+        name: 'Công ty Hoa tươi Đà Lạt Hasfarm',
+        contactPerson: 'Nguyễn Thị Lan',
+        phone: '02633831234',
+        email: 'hasfarm@gmail.com',
+        address: '450 Nguyễn Từ Lực, Đà Lạt, Lâm Đồng',
+        serviceCategory: 'Hoa tươi & trang trí',
+        rating: 4,
+        status: 'active',
+        createdAt: '2026-01-10T08:00:00Z',
+      },
+      {
+        id: 'sup-2',
+        name: 'Âm thanh Ánh sáng Việt Media',
+        contactPerson: 'Trần Văn Minh',
+        phone: '0977888999',
+        email: 'vietmedia@gmail.com',
+        address: '109 Phố Vọng, Hai Bà Trưng, Hà Nội',
+        serviceCategory: 'Âm thanh & ánh sáng',
+        rating: 4,
+        status: 'active',
+        createdAt: '2026-01-15T08:00:00Z',
+      },
+      {
+        id: 'sup-3',
+        name: 'Kho thiết bị sự kiện Đại Phát',
+        contactPerson: 'Lê Đức Thọ',
+        phone: '0909999888',
+        email: 'daiphat@gmail.com',
+        address: 'Đường Kha Vạn Cân, Thủ Đức, TP.HCM',
+        serviceCategory: 'Thiết bị sự kiện',
+        rating: 3,
+        status: 'active',
+        createdAt: '2026-02-01T08:00:00Z',
+      },
+      {
+        id: 'sup-4',
+        name: 'Hỷ Lâm Môn Wedding Decor',
+        contactPerson: 'Phạm Thị Hương',
+        phone: '0933112233',
+        email: 'hylamon@gmail.com',
+        address: '32 Pasteur, Quận 1, TP.HCM',
+        serviceCategory: 'Trang trí tiệc cưới',
+        rating: 5,
+        status: 'inactive',
+        createdAt: '2026-02-20T08:00:00Z',
+      },
+    ],
+    nextSupplierSeq: 5,
+  };
+}
+
+function createInitialSupplierTransactionStore(): SupplierTransactionMockStore {
+  return {
+    transactions: [
+      {
+        id: 'proc-1',
+        supplierId: 'sup-1',
+        orderId: 'order-2',
+        transactionType: 'purchase',
+        totalCost: 15_000_000,
+        depositAmount: 4_500_000,
+        itemDescription: 'Hoa hồng Ecuador Pink Floyd (cành)',
+        status: 'approved',
+        createdAt: '2026-06-10T08:00:00Z',
+      },
+      {
+        id: 'proc-2',
+        supplierId: 'sup-2',
+        orderId: 'order-2',
+        transactionType: 'rental',
+        totalCost: 8_000_000,
+        depositAmount: 2_400_000,
+        itemDescription: 'Màn hình LED P3 Cabin Outdoor bổ sung (m2)',
+        status: 'waiting_for_approval',
+        createdAt: '2026-06-12T08:00:00Z',
+      },
+    ],
+    nextTransactionSeq: 3,
+  };
+}
+
+const supplierStore =
+  globalThis.__bnwemsSupplierStore ?? (globalThis.__bnwemsSupplierStore = createInitialSupplierStore());
+
+const supplierTransactionStore =
+  globalThis.__bnwemsSupplierTransactionStore ??
+  (globalThis.__bnwemsSupplierTransactionStore = createInitialSupplierTransactionStore());
+
+export const mockSuppliers = supplierStore.suppliers;
+export const mockSupplierTransactions = supplierTransactionStore.transactions;
+
+export function nextSupplierId(): string {
+  return `sup-${supplierStore.nextSupplierSeq++}`;
+}
+export function nextTransactionId(): string {
+  return `proc-${supplierTransactionStore.nextTransactionSeq++}`;
+}
+
 export function nextId(
   kind: 'customer' | 'order' | 'quotation' | 'user' | 'catalogItem' | 'catalogCategory' | 'inventory'
 ): string {
