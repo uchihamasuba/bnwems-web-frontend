@@ -67,6 +67,9 @@ export default function LoginPage() {
                 placeholder="Tên đăng nhập"
                 required
                 autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
               />
