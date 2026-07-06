@@ -39,4 +39,14 @@ export const userApiService = {
     const response = await api.post(`/users/${id}/reset-password`, payload);
     return response.data;
   },
+
+  /** POST /api/v1/users/{id}/avatar (UC 2.4) */
+  async updateAvatar(id: string, formData: FormData) {
+    const response = await api.post(`/users/${id}/avatar`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
 };

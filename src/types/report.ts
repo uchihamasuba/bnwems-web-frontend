@@ -11,9 +11,25 @@ export interface AdminDashboardStats {
 // GET /api/v1/dashboard/manager
 export interface ManagerDashboardStats {
   ordersInProgress: number;
-  pendingChangeRequests: number;
+  pendingApprovals: number;
   tasksToday: number;
   alerts: { type: string; workTaskId: string }[];
+}
+
+// GET /api/v1/manager/approvals
+export interface ManagerApprovals {
+  orderWarnings: {
+    warningId: number | string;
+    orderId: string;
+    content: string;
+    createdAt: string;
+  }[];
+  surveyReports: {
+    surveyId: number | string;
+    orderId: string;
+    status: string;
+    createdAt: string;
+  }[];
 }
 
 // GET /api/v1/reports/revenue

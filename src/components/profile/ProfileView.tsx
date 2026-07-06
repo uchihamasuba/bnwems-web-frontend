@@ -6,7 +6,8 @@ import { ProfileLayout } from '@/components/profile/ProfileLayout';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { authApiService } from '@/services/auth.service';
-import { uploadApiService } from '@/services/upload.service';
+import { userApiService } from '@/services/user.service';
+import { useAuth } from '@/hooks/useAuth';
 import type { AuthProfile } from '@/types/auth';
 
 interface ProfileViewProps {
@@ -15,6 +16,7 @@ interface ProfileViewProps {
 }
 
 export function ProfileView({ infoHref, securityHref }: Readonly<ProfileViewProps>) {
+  const { token, login } = useAuth();
   const [profile, setProfile] = useState<AuthProfile | null>(null);
   const [bio, setBio] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
@@ -66,9 +68,11 @@ export function ProfileView({ infoHref, securityHref }: Readonly<ProfileViewProp
       let finalAvatarUrl = avatarUrl;
       
       // If a new file is selected, upload it first
-      if (selectedFile) {
-        const uploadRes = await uploadApiService.uploadImage(selectedFile, 'avatars');
-        finalAvatarUrl = uploadRes.url;
+      if (selectedFile && profile) {
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        const uploadRes = await userApiService.updateAvatar(profile.userId, formData);
+        finalAvatarUrl = uploadRes.data.avatarUrl || uploadRes.data;
         setAvatarUrl(finalAvatarUrl);
       }
       
@@ -79,9 +83,20 @@ export function ProfileView({ infoHref, securityHref }: Readonly<ProfileViewProp
         phone,
       });
       
-      alert('Đã lưu thay đổi thông tin cá nhân!');
       setProfile(prev => prev ? { ...prev, bio, avatarUrl: finalAvatarUrl, fullName, phone } : null);
       setSelectedFile(null);
+
+      // Re-fetch the full profile and update AuthContext so the Header avatar reflects the change
+      try {
+        const freshProfile = await authApiService.getProfile();
+        if (token) {
+          login(token, freshProfile.data);
+        }
+      } catch {
+        // Non-critical: context update failed, UI already updated locally
+      }
+
+      alert('Đã lưu thay đổi thông tin cá nhân!');
     } catch (error) {
       console.error('Failed to update profile:', error);
       alert('Có lỗi xảy ra khi lưu thông tin. Vui lòng thử lại!');

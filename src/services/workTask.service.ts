@@ -9,9 +9,9 @@ export interface GetTasksQuery {
 }
 
 export const workTaskApiService = {
-  /** GET /api/v1/tasks (UC 2.14) */
+  /** GET /api/v1/work-tasks (UC 2.14) */
   async getTasks(params?: GetTasksQuery) {
-    const response = await api.get('/tasks', { params });
+    const response = await api.get('/work-tasks', { params });
     return response.data;
   },
 };

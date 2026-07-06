@@ -29,19 +29,17 @@ import {
 import { reportApiService } from '@/services/report.service';
 import { orderApiService } from '@/services/order.service';
 import { workTaskApiService } from '@/services/workTask.service';
-import { changeRequestApiService } from '@/services/changeRequest.service';
-import { ManagerDashboardStats } from '@/types/report';
+import { ManagerDashboardStats, ManagerApprovals } from '@/types/report';
 import { Order } from '@/types/order';
 import { WorkTask } from '@/types/workTask';
-import { ChangeRequest } from '@/types/changeRequest';
 import { useAuth } from '@/hooks/useAuth';
 import DashboardStats, { KpiCardItem } from '@/components/reports/DashboardStats';
 import ScheduleTimeline from '@/components/dashboard/ScheduleTimeline';
-import ApprovalCard from '@/components/dashboard/ApprovalCard';
 import AnalyticsCard from '@/components/dashboard/AnalyticsCard';
 import ActivityFeed, { ActivityFeedItem } from '@/components/dashboard/ActivityFeed';
 import { formatDate } from '@/utils/formatDate';
 import { ORDER_STATUS_LABEL } from '@/constants/order-status';
+import { Button } from '@/components/ui/Button';
 
 const TASK_TYPE_LABEL: Record<string, string> = {
   preparation: 'Chuẩn bị',
@@ -94,7 +92,7 @@ export default function Page() {
   const [stats, setStats] = useState<ManagerDashboardStats | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [tasks, setTasks] = useState<WorkTask[]>([]);
-  const [changeRequests, setChangeRequests] = useState<ChangeRequest[]>([]);
+  const [approvals, setApprovals] = useState<ManagerApprovals>({ orderWarnings: [], surveyReports: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [viewDate, setViewDate] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState(() => new Date());
@@ -104,12 +102,12 @@ export default function Page() {
       reportApiService.getManagerDashboard(),
       orderApiService.getOrders({ limit: 5 }),
       workTaskApiService.getTasks({ limit: 100 }),
-      changeRequestApiService.getChangeRequests({ status: 'pending', limit: 5 }),
-    ]).then(([dashboardRes, ordersRes, tasksRes, changeRequestsRes]) => {
+      reportApiService.getManagerApprovals(),
+    ]).then(([dashboardRes, ordersRes, tasksRes, approvalsRes]) => {
       setStats(dashboardRes.data);
       setOrders(ordersRes.data);
       setTasks(tasksRes.data);
-      setChangeRequests(changeRequestsRes.data);
+      setApprovals(approvalsRes.data);
     });
   };
 
@@ -128,8 +126,8 @@ export default function Page() {
     .sort((a, b) => new Date(a.eventStartDate).getTime() - new Date(b.eventStartDate).getTime())
     .slice(0, 4);
 
-  const handleApprove = async (changeRequestId: string, status: 'approved' | 'rejected') => {
-    await changeRequestApiService.approveChangeRequest(changeRequestId, status);
+  const handleResolveWarning = async (warningId: string) => {
+    await reportApiService.resolveWarning(warningId);
     loadDashboard();
   };
 
@@ -151,17 +149,16 @@ export default function Page() {
       });
     }
 
-    for (const cr of changeRequests) {
-      const order = orderById.get(cr.orderId);
+    for (const warning of approvals.orderWarnings) {
       feedItems.push({
-        key: `cr-${cr.changeRequestId}`,
-        time: new Date(cr.createdAt).getTime(),
-        icon: RefreshCw,
+        key: `warning-${warning.warningId}`,
+        time: new Date(warning.createdAt).getTime(),
+        icon: AlertTriangle,
         iconColor: 'amber',
         message: (
           <>
-            Yêu cầu thay đổi thiết bị cho đơn{' '}
-            <span className="font-medium text-slate-700">{order?.orderNumber ?? cr.orderId}</span> đang chờ phê duyệt.
+            Cảnh báo cho đơn{' '}
+            <span className="font-medium text-slate-700">{warning.orderId}</span> cần xử lý: {warning.content}.
           </>
         ),
       });
@@ -185,12 +182,12 @@ export default function Page() {
     }
 
     return feedItems.sort((a, b) => b.time - a.time).slice(0, 5);
-  }, [orders, changeRequests, tasks, orderById]);
+  }, [orders, approvals, tasks]);
 
   const items: KpiCardItem[] = stats
     ? [
         { label: 'Đơn hàng đang thực hiện', value: stats.ordersInProgress, icon: ClipboardList, iconColor: 'blue' },
-        { label: 'Yêu cầu chờ xử lý', value: stats.pendingChangeRequests, icon: RefreshCw, iconColor: 'amber' },
+        { label: 'Yêu cầu chờ xử lý', value: stats.pendingApprovals, icon: RefreshCw, iconColor: 'amber' },
         { label: 'Công việc hôm nay', value: stats.tasksToday, icon: CalendarCheck, iconColor: 'blue' },
         {
           label: 'Cảnh báo cần chú ý',
@@ -262,21 +259,31 @@ export default function Page() {
               <div className="flex h-full flex-col overflow-hidden rounded-2xl bg-white shadow-md">
                 <div className="border-b border-slate-100 px-5 py-5">
                   <h3 className="text-lg font-semibold text-slate-900">Yêu cầu chờ xử lý</h3>
-                  <p className="mt-0.5 text-sm text-slate-400">Cần bạn phê duyệt ({changeRequests.length})</p>
+                  <p className="mt-0.5 text-sm text-slate-400">Cần bạn phê duyệt hoặc xử lý ({approvals.orderWarnings.length + approvals.surveyReports.length})</p>
                 </div>
 
                 <div className="flex-1 space-y-3 p-4">
-                  {changeRequests.length === 0 && (
+                  {(approvals.orderWarnings.length === 0 && approvals.surveyReports.length === 0) && (
                     <p className="py-6 text-center text-sm text-slate-400">Không có yêu cầu nào chờ xử lý.</p>
                   )}
-                  {changeRequests.map((cr) => (
-                    <ApprovalCard
-                      key={cr.changeRequestId}
-                      changeRequest={cr}
-                      order={orderById.get(cr.orderId)}
-                      onApprove={() => handleApprove(cr.changeRequestId, 'approved')}
-                      onReject={() => handleApprove(cr.changeRequestId, 'rejected')}
-                    />
+                  {approvals.orderWarnings.map((warning) => (
+                    <div key={warning.warningId} className="flex items-start justify-between rounded-xl border border-slate-100 bg-white p-4">
+                      <div className="mr-4 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">
+                            Cảnh báo đơn hàng
+                          </span>
+                          <span className="text-sm font-medium text-slate-900">{warning.orderId}</span>
+                        </div>
+                        <p className="mt-2 text-sm text-slate-600">{warning.content}</p>
+                        <p className="mt-2 text-xs text-slate-400">{new Date(warning.createdAt).toLocaleString('vi-VN')}</p>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Button size="sm" onClick={() => handleResolveWarning(String(warning.warningId))}>
+                          Đã xử lý
+                        </Button>
+                      </div>
+                    </div>
                   ))}
                 </div>
 

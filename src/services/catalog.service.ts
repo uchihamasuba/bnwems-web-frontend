@@ -24,63 +24,63 @@ export interface GetCatalogCategoriesQuery {
 }
 
 export const catalogApiService = {
-  /** GET /api/v1/catalog-items (UC 2.5) */
+  /** GET /api/v1/catalog/items (UC 2.5) */
   async getCatalogItems(params?: GetCatalogItemsQuery) {
-    const response = await api.get('/catalog-items', { params });
+    const response = await api.get('/catalog/items', { params });
     return response.data;
   },
 
-  /** GET /api/v1/catalog-items/{id} (UC 2.5) */
+  /** GET /api/v1/catalog/items/{id} (UC 2.5) */
   async getCatalogItem(id: string) {
-    const response = await api.get(`/catalog-items/${id}`);
+    const response = await api.get(`/catalog/items/${id}`);
     return response.data;
   },
 
-  /** POST /api/v1/catalog-items (UC 2.5) */
+  /** POST /api/v1/catalog/items (UC 2.5) */
   async createCatalogItem(payload: CreateCatalogItemPayload) {
-    const response = await api.post('/catalog-items', payload);
+    const response = await api.post('/catalog/items', payload);
     return response.data;
   },
 
-  /** PUT /api/v1/catalog-items/{id} (UC 2.5) */
+  /** PUT /api/v1/catalog/items/{id} (UC 2.5) */
   async updateCatalogItem(id: string, payload: UpdateCatalogItemPayload) {
-    const response = await api.put(`/catalog-items/${id}`, payload);
+    const response = await api.put(`/catalog/items/${id}`, payload);
     return response.data;
   },
 
-  /** PUT /api/v1/catalog-items/{id}/deactivate (UC 2.5) */
+  /** PATCH /api/v1/catalog/items/{id}/status (UC 2.5) */
   async updateCatalogItemStatus(id: string, payload: UpdateCatalogItemStatusPayload) {
-    const response = await api.put(`/catalog-items/${id}/deactivate`, payload);
+    const response = await api.patch(`/catalog/items/${id}/status`, payload);
     return response.data;
   },
 
-  /** GET /api/v1/catalog-categories (UC 2.5) */
+  /** GET /api/v1/catalog/categories (UC 2.5) */
   async getCatalogCategories(params?: GetCatalogCategoriesQuery) {
-    const response = await api.get('/catalog-categories', { params });
+    const response = await api.get('/catalog/categories', { params });
     return response.data;
   },
 
-  /** GET /api/v1/catalog-categories/{id} (UC 2.5) */
+  /** GET /api/v1/catalog/categories/{id} (UC 2.5) */
   async getCatalogCategory(id: string) {
-    const response = await api.get(`/catalog-categories/${id}`);
+    const response = await api.get(`/catalog/categories/${id}`);
     return response.data;
   },
 
-  /** POST /api/v1/catalog-categories (UC 2.5) */
+  /** POST /api/v1/catalog/categories (UC 2.5) */
   async createCatalogCategory(payload: CreateCatalogCategoryPayload) {
-    const response = await api.post('/catalog-categories', payload);
+    const response = await api.post('/catalog/categories', payload);
     return response.data;
   },
 
-  /** PUT /api/v1/catalog-categories/{id} (UC 2.5) */
+  /** PUT /api/v1/catalog/categories/{id} (UC 2.5) */
   async updateCatalogCategory(id: string, payload: UpdateCatalogCategoryPayload) {
-    const response = await api.put(`/catalog-categories/${id}`, payload);
+    const response = await api.put(`/catalog/categories/${id}`, payload);
     return response.data;
   },
 
-  /** PUT /api/v1/catalog-categories/{id}/deactivate (UC 2.5) */
+  /** PATCH /api/v1/catalog/categories/{id}/status (UC 2.5) */
   async updateCatalogCategoryStatus(id: string, payload: UpdateCatalogCategoryStatusPayload) {
-    const response = await api.put(`/catalog-categories/${id}/deactivate`, payload);
+    const response = await api.patch(`/catalog/categories/${id}/status`, payload);
     return response.data;
   },
 };

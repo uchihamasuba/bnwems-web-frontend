@@ -2,9 +2,9 @@ import api from './api';
 import type { SaveQuotationPayload } from '@/types/quotation';
 
 export const quotationApiService = {
-  /** GET /api/v1/orders/{orderId}/quotations (UC 2.10) */
-  async getOrderQuotations(orderId: string, params?: { page?: number; limit?: number }) {
-    const response = await api.get(`/orders/${orderId}/quotations`, { params });
+  /** GET /api/v1/customers/{customerId}/quotations (UC 2.10) */
+  async getCustomerQuotations(customerId: string, params?: { page?: number; limit?: number }) {
+    const response = await api.get(`/customers/${customerId}/quotations`, { params });
     return response.data;
   },
 
@@ -14,9 +14,9 @@ export const quotationApiService = {
     return response.data;
   },
 
-  /** POST /api/v1/orders/{orderId}/quotations (UC 2.10) */
-  async createQuotation(orderId: string, payload: SaveQuotationPayload) {
-    const response = await api.post(`/orders/${orderId}/quotations`, payload);
+  /** POST /api/v1/customers/{customerId}/quotations (UC 2.10) */
+  async createQuotation(customerId: string, payload: SaveQuotationPayload) {
+    const response = await api.post(`/customers/${customerId}/quotations`, payload);
     return response.data;
   },
 
@@ -32,9 +32,9 @@ export const quotationApiService = {
     return response.data;
   },
 
-  /** PUT /api/v1/quotations/{id}/confirm (UC 2.10) */
+  /** PATCH /api/v1/quotations/{id}/status (UC 2.10) */
   async confirmQuotation(id: string) {
-    const response = await api.put(`/quotations/${id}/confirm`);
+    const response = await api.patch(`/quotations/${id}/status`, { status: 'APPROVED' });
     return response.data;
   },
 };

@@ -45,12 +45,18 @@ export default function Header() {
           className="flex items-center gap-2 rounded-full p-1 pr-2.5 transition-colors duration-150 hover:bg-slate-50"
         >
           {/* Default to a generic user image for mockup or use initials */}
-          <div className="h-8 w-8 overflow-hidden rounded-full ring-1 ring-slate-200">
-            <img 
-              src="https://images.unsplash.com/photo-1560250097-0b93528c311a?ixlib=rb-4.0.3&auto=format&fit=crop&w=256&q=80" 
-              alt="Avatar" 
-              className="h-full w-full object-cover"
-            />
+          <div className="h-8 w-8 overflow-hidden rounded-full ring-1 ring-slate-200 bg-slate-200 flex items-center justify-center">
+            {user?.avatarUrl ? (
+              <img
+                src={user.avatarUrl}
+                alt="Avatar"
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <span className="text-xs font-semibold text-slate-600">
+                {user?.fullName?.charAt(0)?.toUpperCase() ?? 'U'}
+              </span>
+            )}
           </div>
           <div className="flex flex-col text-left">
             <span className="text-sm font-semibold text-slate-900">{user?.fullName ?? 'Lê Minh Bliss'}</span>

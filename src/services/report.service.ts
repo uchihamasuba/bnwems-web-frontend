@@ -24,4 +24,16 @@ export const reportApiService = {
     const response = await api.get('/reports/inventory', { params });
     return response.data;
   },
+
+  /** GET /api/v1/manager/approvals (UC 2.8) */
+  async getManagerApprovals() {
+    const response = await api.get('/manager/approvals');
+    return response.data;
+  },
+
+  /** PUT /api/v1/warnings/{id}/resolve */
+  async resolveWarning(id: string) {
+    const response = await api.put(`/warnings/${id}/resolve`);
+    return response.data;
+  },
 };

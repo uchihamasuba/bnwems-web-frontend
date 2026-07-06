@@ -72,26 +72,23 @@ export default function Page() {
         const ordersRes = await orderApiService.getOrders({ limit: 200 });
         const customerOrders = ordersRes.data.filter((order: Order) => order.customerId === id);
 
-        const ordersWithValue = await Promise.all(
-          customerOrders.map(async (order: Order) => {
-            try {
-              const quoteRes = await quotationApiService.getOrderQuotations(order.orderId, { limit: 20 });
-              const accepted = quoteRes.data.find((q: { status: string }) => q.status === 'ACCEPTED');
-              const latest = quoteRes.data[0];
-              return {
-                ...order,
-                orderValue: accepted?.totalAmount ?? latest?.totalAmount ?? null,
-              };
-            } catch {
-              return { ...order, orderValue: null };
-            }
-          })
-        );
+        const customerQuotationsRes = await quotationApiService.getCustomerQuotations(id, { limit: 1000 }).catch(() => ({ data: [] }));
+        const customerQuotations = customerQuotationsRes.data;
+
+        const ordersWithValue = customerOrders.map((order: Order) => {
+          const orderQuotes = customerQuotations.filter((q: any) => q.orderId === order.orderId);
+          const accepted = orderQuotes.find((q: any) => q.status === 'APPROVED' || q.status === 'ACCEPTED');
+          const latest = orderQuotes[0];
+          return {
+            ...order,
+            orderValue: accepted?.totalAmount ?? latest?.totalAmount ?? null,
+          };
+        });
 
         if (!cancelled) {
           setOrders(
             ordersWithValue.sort(
-              (a, b) => new Date(b.eventStartDate).getTime() - new Date(a.eventStartDate).getTime()
+              (a: any, b: any) => new Date(b.eventStartDate).getTime() - new Date(a.eventStartDate).getTime()
             )
           );
         }

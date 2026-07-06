@@ -70,43 +70,26 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemFilter, pagination.currentPage, pagination.limit, catalogItems, refreshToken]);
 
-  const handleCreateSubmit = async (values: InventoryFormValues) => {
+  const handleAdjustSubmit = async (values: InventoryFormValues) => {
     setIsSubmittingForm(true);
     setFormError('');
     try {
-      await inventoryApiService.createInventory({
-        warehouseId: values.warehouseId,
+      await inventoryApiService.adjustInventory({
         catalogItemId: values.catalogItemId,
-        availableQuantity: values.availableQuantity,
+        adjustmentType: values.adjustmentType,
+        quantity: values.quantity,
+        reason: values.reason,
       });
       setFormModal(null);
       refetchRows();
     } catch (err) {
-      setFormError(getErrorMessage(err, 'Thêm tồn kho thất bại'));
+      setFormError(getErrorMessage(err, 'Điều chỉnh tồn kho thất bại'));
     } finally {
       setIsSubmittingForm(false);
     }
   };
 
-  const handleEditSubmit = async (values: InventoryFormValues, row: StockRow) => {
-    setIsSubmittingForm(true);
-    setFormError('');
-    try {
-      await inventoryApiService.updateInventory(row.id, {
-        availableQuantity: values.availableQuantity,
-        reservedQuantity: values.reservedQuantity,
-        checkedOutQuantity: values.checkedOutQuantity,
-        damagedQuantity: values.damagedQuantity,
-        lostQuantity: values.lostQuantity,
-      });
-      setFormModal(null);
-      refetchRows();
-    } catch (err) {
-      setFormError(getErrorMessage(err, 'Cập nhật tồn kho thất bại'));
-    } finally {
-      setIsSubmittingForm(false);
-    }
-  };
+
 
   const itemOptions = catalogItems.map((item) => ({ value: item.id, label: item.name }));
 
@@ -178,8 +161,8 @@ export default function Page() {
           </Link>
           {canManage && (
             <Button onClick={() => setFormModal({ mode: 'create', row: null })}>
-              <Plus className="h-4 w-4" />
-              Thêm tồn kho
+              <Plus className="mr-2 h-4 w-4" />
+              Điều chỉnh kho
             </Button>
           )}
         </div>
@@ -209,7 +192,6 @@ export default function Page() {
 
       <InventoryFormModal
         isOpen={!!formModal}
-        mode={formModal?.mode ?? 'create'}
         row={formModal?.row}
         catalogItems={catalogItems}
         isSubmitting={isSubmittingForm}
@@ -218,13 +200,7 @@ export default function Page() {
           setFormModal(null);
           setFormError('');
         }}
-        onSubmit={(values) => {
-          if (formModal?.mode === 'edit' && formModal.row) {
-            handleEditSubmit(values, formModal.row);
-          } else {
-            handleCreateSubmit(values);
-          }
-        }}
+        onSubmit={handleAdjustSubmit}
       />
     </div>
   );
