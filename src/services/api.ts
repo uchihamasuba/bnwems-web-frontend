@@ -13,7 +13,7 @@ const api: AxiosInstance = axios.create({
 // Request interceptor — attach JWT token from localStorage
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    if (typeof window !== 'undefined') {
+    if (globalThis.window !== undefined) {
       const token = localStorage.getItem('bnwems_token');
       if (token && config.headers) {
         config.headers['Authorization'] = `Bearer ${token}`;
@@ -24,22 +24,39 @@ api.interceptors.request.use(
   (error: AxiosError) => Promise.reject(error)
 );
 
-// Response interceptor — handle 401 globally (session expiry on authenticated
-// requests). The login request itself also returns 401 on wrong credentials,
-// but that's a normal auth failure for the login page to show inline, not a
-// session expiry — must not trigger the hard redirect.
+// Response interceptor — handle 401 globally and auto-retry transient DB errors.
 api.interceptors.response.use(
   (response) => response,
-  (error: AxiosError) => {
+  async (error: AxiosError) => {
     const isLoginRequest = error.config?.url === '/auth/login';
+
     if (error.response?.status === 401 && !isLoginRequest) {
-      if (typeof window !== 'undefined') {
+      if (globalThis.window !== undefined) {
         localStorage.removeItem('bnwems_token');
         localStorage.removeItem('bnwems_user');
-        window.location.href = '/auth/login';
+        globalThis.window.location.href = '/auth/login';
       }
     }
-    return Promise.reject(error);
+
+    // Prisma P2024 (connection pool timeout on remote Aiven DB) surfaces as HTTP 400 with
+    // code: 'DB_ERROR'. Retry once after 400 ms — pool contention is transient.
+    const data = error.response?.data as { code?: string } | undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const config = error.config as any;
+    if (error.response?.status === 400 && data?.code === 'DB_ERROR' && config && !config._dbRetried) {
+      config._dbRetried = true;
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      return api.request(config);
+    }
+
+    // Log remaining 4xx/5xx in dev (excludes login — its errors are shown inline).
+    if (process.env.NODE_ENV !== 'production' && error.response && error.response.status >= 400 && !isLoginRequest) {
+      console.error(
+        `[API ${error.response.status}] ${error.config?.method?.toUpperCase()} ${error.config?.url}`,
+        error.response.data,
+      );
+    }
+    throw error;
   }
 );
 

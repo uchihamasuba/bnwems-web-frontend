@@ -17,19 +17,19 @@ import { usePagination } from '@/hooks/usePagination';
 import { useDebounce } from '@/hooks/useDebounce';
 import { usePermission } from '@/hooks/usePermission';
 import { formatDate } from '@/utils/formatDate';
-import { ROLE_OPTIONS } from '@/constants/roles';
+import { USER_ROLE_OPTIONS } from '@/constants/roles';
 import type { AdminUser } from '@/types/user';
 
 const STATUS_LABEL: Record<string, string> = {
   ACTIVE: 'Đang hoạt động',
   INACTIVE: 'Đã vô hiệu hóa',
-  LOCKED: 'Tạm khóa',
+  SUSPENDED: 'Tạm khóa',
 };
 
 const STATUS_OPTIONS = [
   { value: 'ACTIVE', label: 'Đang hoạt động' },
   { value: 'INACTIVE', label: 'Đã vô hiệu hóa' },
-  { value: 'LOCKED', label: 'Tạm khóa' },
+  { value: 'SUSPENDED', label: 'Tạm khóa' },
 ];
 
 export default function Page() {
@@ -95,7 +95,7 @@ export default function Page() {
     setIsSubmittingForm(true);
     setFormError('');
     try {
-      await userApiService.updateUser(user.id, { fullName: values.fullName, role: values.role });
+      await userApiService.updateUser(user.userId, { fullName: values.fullName, role: values.role });
       setFormModal(null);
       refetchUsers();
     } catch (err) {
@@ -114,7 +114,7 @@ export default function Page() {
     if (!window.confirm(confirmMessage)) return;
 
     try {
-      await userApiService.updateUserStatus(user.id, { status: nextStatus });
+      await userApiService.updateUserStatus(user.userId, { status: nextStatus });
       refetchUsers();
     } catch (err) {
       window.alert(getErrorMessage(err, 'Cập nhật trạng thái thất bại'));
@@ -126,7 +126,7 @@ export default function Page() {
     setIsResettingPassword(true);
     setResetPasswordError('');
     try {
-      await userApiService.resetPassword(resetPasswordUser.id, { newPassword });
+      await userApiService.resetPassword(resetPasswordUser.userId, { newPassword });
       setResetPasswordUser(null);
     } catch (err) {
       setResetPasswordError(getErrorMessage(err, 'Đặt lại mật khẩu thất bại'));
@@ -152,7 +152,7 @@ export default function Page() {
     {
       key: 'role',
       label: 'Vai trò',
-      render: (row) => <Badge variant="neutral">{ROLE_OPTIONS.find((r) => r.value === row.role)?.label ?? row.role}</Badge>,
+      render: (row) => <Badge variant="neutral">{USER_ROLE_OPTIONS.find((r) => r.value === row.role)?.label ?? row.role}</Badge>,
     },
     {
       key: 'status',
@@ -249,7 +249,7 @@ export default function Page() {
                 setRoleFilter(e.target.value);
                 setPage(1);
               }}
-              options={[{ value: '', label: 'Tất cả vai trò' }, ...ROLE_OPTIONS]}
+              options={[{ value: '', label: 'Tất cả vai trò' }, ...USER_ROLE_OPTIONS]}
             />
           </div>
           <div className="w-48">
@@ -265,7 +265,7 @@ export default function Page() {
         </div>
 
         <div className="mt-4">
-          <Table columns={columns} rows={users} rowKey={(row) => row.id} isLoading={isLoading} />
+          <Table columns={columns} rows={users} rowKey={(row) => row.userId} isLoading={isLoading} />
         </div>
         <Pagination pagination={pagination} onPageChange={setPage} />
       </div>

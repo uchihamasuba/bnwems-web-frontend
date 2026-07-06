@@ -4,18 +4,20 @@ import { motion } from 'framer-motion';
 import { Calendar, Clock, RefreshCw } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
-import { FIELD_STATUS_META } from './surveyPersonnel.constants';
+import { SCHEDULE_STATUS_META } from './surveyPersonnel.constants';
 import { formatDate, formatTime } from '@/utils/formatDate';
-import type { AssignmentGroup } from '@/types/assignment';
+import type { SchedulePlan } from '@/types/schedulePlan';
 
 interface SurveyAssignmentCardProps {
-  group: AssignmentGroup | null;
+  plan: SchedulePlan | null;
   canManage: boolean;
   isLoading: boolean;
   onReassign: () => void;
 }
 
-export default function SurveyAssignmentCard({ group, canManage, isLoading, onReassign }: Readonly<SurveyAssignmentCardProps>) {
+// 1 SchedulePlan = 1 người được giao khảo sát — khái niệm "nhóm nhiều người" (AssignmentGroup cũ)
+// không còn tồn tại. "Đổi người" tạo 1 SchedulePlan mới (không có endpoint sửa assignedTo).
+export default function SurveyAssignmentCard({ plan, canManage, isLoading, onReassign }: Readonly<SurveyAssignmentCardProps>) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -26,14 +28,14 @@ export default function SurveyAssignmentCard({ group, canManage, isLoading, onRe
     >
       <div className="flex items-center justify-between">
         <h3 className="text-base font-semibold text-slate-900">Phân công khảo sát</h3>
-        {canManage && group && (
+        {canManage && (
           <button
             type="button"
             onClick={onReassign}
             className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
           >
             <RefreshCw className="h-3.5 w-3.5" />
-            Đổi người
+            {plan ? 'Đổi người' : 'Phân công'}
           </button>
         )}
       </div>
@@ -41,33 +43,27 @@ export default function SurveyAssignmentCard({ group, canManage, isLoading, onRe
       <div className="mt-4">
         {isLoading ? (
           <p className="text-sm text-slate-400">Đang tải...</p>
-        ) : !group ? (
+        ) : !plan ? (
           <p className="text-sm text-slate-500">Chưa phân công khảo sát.</p>
         ) : (
           <>
             <div className="mb-3 flex items-center gap-4 text-xs text-slate-500">
               <span className="inline-flex items-center gap-1">
                 <Calendar className="h-3.5 w-3.5" />
-                {formatDate(group.scheduledStart)}
+                {formatDate(plan.startTime)}
               </span>
               <span className="inline-flex items-center gap-1">
                 <Clock className="h-3.5 w-3.5" />
-                {formatTime(group.scheduledStart)} - {formatTime(group.scheduledEnd)}
+                {formatTime(plan.startTime)}
+                {plan.endTime ? ` - ${formatTime(plan.endTime)}` : ''}
               </span>
             </div>
-            <div className="space-y-2">
-              {group.members.map((m, idx) => (
-                <div key={m.userId + idx} className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <Avatar name={m.fullName} size="sm" />
-                    <div>
-                      <p className="text-sm font-medium text-slate-800">{m.fullName}</p>
-                      <p className="text-xs text-slate-400">{m.assignedRole}</p>
-                    </div>
-                  </div>
-                  {m.fieldStatus && <Badge variant={FIELD_STATUS_META[m.fieldStatus].variant}>{FIELD_STATUS_META[m.fieldStatus].label}</Badge>}
-                </div>
-              ))}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <Avatar name={plan.assigneeName ?? String(plan.assignedTo)} size="sm" />
+                <p className="text-sm font-medium text-slate-800">{plan.assigneeName ?? `NV #${plan.assignedTo}`}</p>
+              </div>
+              <Badge variant={SCHEDULE_STATUS_META[plan.status].variant}>{SCHEDULE_STATUS_META[plan.status].label}</Badge>
             </div>
           </>
         )}

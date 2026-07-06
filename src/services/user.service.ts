@@ -10,33 +10,43 @@ export interface GetUsersQuery {
 }
 
 export const userApiService = {
-  /** GET /api/v1/users (UC 2.4) */
+  /** GET /api/v1/users */
   async getUsers(params?: GetUsersQuery) {
     const response = await api.get('/users', { params });
     return response.data;
   },
 
-  /** POST /api/v1/users (UC 2.4) */
+  /** POST /api/v1/users */
   async createUser(payload: CreateUserPayload) {
     const response = await api.post('/users', payload);
     return response.data;
   },
 
-  /** PUT /api/v1/users/{id} (UC 2.4) */
+  /** PUT /api/v1/users/{id} */
   async updateUser(id: string, payload: UpdateUserPayload) {
     const response = await api.put(`/users/${id}`, payload);
     return response.data;
   },
 
-  /** PUT /api/v1/users/{id}/status (UC 2.4) */
+  /** PATCH /api/v1/users/{id}/status */
   async updateUserStatus(id: string, payload: UpdateUserStatusPayload) {
-    const response = await api.put(`/users/${id}/status`, payload);
+    const response = await api.patch(`/users/${id}/status`, payload);
     return response.data;
   },
 
-  /** POST /api/v1/users/{id}/reset-password (UC 2.4) */
+  /** POST /api/v1/users/{id}/reset-password */
   async resetPassword(id: string, payload: ResetPasswordPayload) {
     const response = await api.post(`/users/${id}/reset-password`, payload);
+    return response.data;
+  },
+
+  /** POST /api/v1/users/{id}/avatar — multipart, chỉ ADMIN sửa avatar người khác */
+  async updateAvatar(id: string, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post(`/users/${id}/avatar`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
     return response.data;
   },
 };

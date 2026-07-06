@@ -1,26 +1,62 @@
-// GET /api/v1/schedules — kế hoạch lịch trình, trả dữ liệu wrap từ WorkTask.
-// Controller schedule.controller.ts getSchedules đọc từ taskService.getTasks() rồi map:
-//   id          = WorkTask.workTaskId (string)
-//   activityType = WorkTask.title (vd 'survey' hoặc tên op tự do)
-//   scheduledStart = description JSON.scheduledStart nếu có, hoặc fallback task.createdAt
-//   scheduledEnd   = description JSON.scheduledEnd   nếu có, hoặc fallback task.updatedAt
-//   location       = description JSON.location        nếu có, hoặc null
-// Xem docs/more-require.md mục (bb) để biết chi tiết + lịch sử gap.
-export interface Schedule {
-  id: string;
+// GET /api/v1/schedule-plans — thay thế Schedule/Assignment cũ. SchedulePlan là lịch + phân công
+// THẬT: 1 plan = 1 order + 1 task (loại việc) + 1 người được giao (assignedTo). Muốn nhiều người
+// làm cùng 1 việc/thời điểm phải tạo nhiều SchedulePlan (mỗi người 1 plan) — khái niệm "phân công
+// nhiều người" (Assignment cũ) không còn tồn tại.
+// Nguồn: D:\bnwems-backend-api prisma/schema.prisma (model SchedulePlan), operations.route.ts,
+// operations.validator.ts, operations.service.ts.
+
+export type ScheduleStatus = 'PENDING' | 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+
+export interface SchedulePlan {
+  planId: string;
+  planCode: string;
   orderId: string;
-  activityType: string;
-  scheduledStart: string;
-  scheduledEnd: string;
-  location: string | null;
-  status: string;
+  taskId: string;
+  assignedTo: string;
+  startTime: string;
+  endTime?: string;
+  location?: string;
+  status: ScheduleStatus;
+  evidenceId?: string;
+  notes?: string;
+  createdBy: string;
   createdAt: string;
+  updatedAt: string;
+  taskName?: string; // join thêm khi GET
+  assigneeName?: string; // join thêm khi GET
 }
 
-export interface GetSchedulesQuery {
+export interface GetSchedulePlansQuery {
   page?: number;
   limit?: number;
   orderId?: string;
-  activityType?: string;
-  status?: string;
+  assignedTo?: string;
+  status?: ScheduleStatus;
+  date?: string; // YYYY-MM-DD
+}
+
+// POST /api/v1/schedule-plans
+export interface CreateSchedulePlanPayload {
+  orderId: string;
+  taskId: string;
+  assignedTo: string;
+  startTime: string; // ISO datetime
+  endTime?: string;
+  location?: string;
+  notes?: string;
+}
+
+// PUT /api/v1/schedule-plans/:id — chỉ sửa được khi status khác IN_PROGRESS/COMPLETED
+export interface UpdateSchedulePlanPayload {
+  startTime?: string;
+  endTime?: string;
+  location?: string;
+  notes?: string;
+}
+
+// PATCH /api/v1/schedule-plans/:id/status
+export interface UpdateSchedulePlanStatusPayload {
+  status: ScheduleStatus;
+  notes?: string;
+  evidenceId?: string;
 }

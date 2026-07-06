@@ -28,12 +28,11 @@ const SERVICE_CATEGORIES = [
 ];
 
 function procStatusLabel(status: string): { label: string; variant: 'success' | 'warning' | 'error' | 'neutral' } {
-  if (status === 'approved') return { label: 'Approved', variant: 'success' };
-  if (status === 'waiting_for_approval') return { label: 'Waiting for Approval', variant: 'warning' };
-  if (status === 'received') return { label: 'Received', variant: 'success' };
-  if (status === 'returned') return { label: 'Returned', variant: 'neutral' };
-  if (status === 'cancelled') return { label: 'Cancelled', variant: 'error' };
-  return { label: 'Draft', variant: 'neutral' };
+  if (status === 'APPROVED') return { label: 'Đã duyệt', variant: 'success' };
+  if (status === 'IN_PROGRESS') return { label: 'Đang thực hiện', variant: 'warning' };
+  if (status === 'COMPLETED') return { label: 'Hoàn thành', variant: 'success' };
+  if (status === 'CANCELLED') return { label: 'Đã hủy', variant: 'error' };
+  return { label: 'Chờ duyệt', variant: 'neutral' };
 }
 
 function StarRating({ rating }: { rating: number }) {
@@ -93,9 +92,9 @@ export default function Page() {
   const filteredSuppliers = useMemo(() => {
     const term = supplierSearch.trim().toLowerCase();
     return suppliers.filter((s) => {
-      if (categoryFilter && s.serviceCategory !== categoryFilter) return false;
+      if (categoryFilter && s.serviceType !== categoryFilter) return false;
       if (!term) return true;
-      return s.name.toLowerCase().includes(term) || s.serviceCategory.toLowerCase().includes(term);
+      return s.supplierName.toLowerCase().includes(term) || s.serviceType.toLowerCase().includes(term);
     });
   }, [suppliers, supplierSearch, categoryFilter]);
 
@@ -105,12 +104,12 @@ export default function Page() {
     return transactions.filter(
       (t) =>
         t.orderId.toLowerCase().includes(term) ||
-        t.itemDescription.toLowerCase().includes(term) ||
+        t.serviceTitle.toLowerCase().includes(term) ||
         (t.supplierName?.toLowerCase().includes(term) ?? false),
     );
   }, [transactions, orderSearch]);
 
-  const activeCount = suppliers.filter((s) => s.status === 'active').length;
+  const activeCount = suppliers.filter((s) => s.status === 'ACTIVE').length;
   const fiveStarCount = suppliers.filter((s) => s.rating === 5).length;
 
   return (
@@ -199,15 +198,13 @@ export default function Page() {
                     <tr><td colSpan={8} className="px-4 py-8 text-center text-sm italic text-slate-400">Đang tải...</td></tr>
                   ) : filteredSuppliers.length === 0 ? (
                     <tr><td colSpan={8} className="px-4 py-8 text-center text-sm italic text-slate-400">Không có nhà cung cấp nào.</td></tr>
-                  ) : filteredSuppliers.map((sup, i) => (
+                  ) : filteredSuppliers.map((sup) => (
                     <tr key={sup.supplierId} className="hover:bg-slate-50/60">
-                      <td className="px-4 py-3 font-mono text-sm font-bold text-blue-600">
-                        SUP-{String(i + 1).padStart(3, '0')}
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-slate-800">{sup.name}</td>
+                      <td className="px-4 py-3 font-mono text-sm font-bold text-blue-600">{sup.supplierCode}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-800">{sup.supplierName}</td>
                       <td className="px-4 py-3">
                         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                          {sup.serviceCategory || '—'}
+                          {sup.serviceType || '—'}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-slate-600">{sup.phone}</td>
@@ -215,10 +212,10 @@ export default function Page() {
                         {sup.address || '—'}
                       </td>
                       <td className="px-4 py-3">
-                        <StarRating rating={sup.rating} />
+                        <StarRating rating={sup.rating ?? 0} />
                       </td>
                       <td className="px-4 py-3">
-                        {sup.status === 'active' ? (
+                        {sup.status === 'ACTIVE' ? (
                           <Badge variant="success">Active</Badge>
                         ) : (
                           <Badge variant="neutral">Inactive</Badge>
@@ -278,17 +275,15 @@ export default function Page() {
                     <tr><td colSpan={8} className="px-4 py-8 text-center text-sm italic text-slate-400">Đang tải...</td></tr>
                   ) : filteredTransactions.length === 0 ? (
                     <tr><td colSpan={8} className="px-4 py-8 text-center text-sm italic text-slate-400">Không có đơn mua sắm nào.</td></tr>
-                  ) : filteredTransactions.map((tx, i) => {
+                  ) : filteredTransactions.map((tx) => {
                     const { label, variant } = procStatusLabel(tx.status);
                     return (
-                      <tr key={tx.supplierTransactionId} className="hover:bg-slate-50/60">
-                        <td className="px-4 py-3 font-mono text-sm font-bold text-blue-600">
-                          PROC-{String(i + 1).padStart(3, '0')}
-                        </td>
+                      <tr key={tx.transactionId} className="hover:bg-slate-50/60">
+                        <td className="px-4 py-3 font-mono text-sm font-bold text-blue-600">{tx.transactionCode}</td>
                         <td className="px-4 py-3 font-semibold text-slate-700">{tx.orderId}</td>
                         <td className="px-4 py-3 font-semibold text-slate-800">{tx.supplierName ?? tx.supplierId}</td>
-                        <td className="max-w-[220px] px-4 py-3 text-slate-600">{tx.itemDescription}</td>
-                        <td className="px-4 py-3 font-semibold text-slate-800">{formatCurrency(tx.totalCost)}</td>
+                        <td className="max-w-[220px] px-4 py-3 text-slate-600">{tx.serviceTitle}</td>
+                        <td className="px-4 py-3 font-semibold text-slate-800">{formatCurrency(tx.estimatedCost)}</td>
                         <td className="px-4 py-3 font-semibold text-blue-600">{formatCurrency(tx.depositAmount)}</td>
                         <td className="px-4 py-3">
                           <Badge variant={variant}>{label}</Badge>

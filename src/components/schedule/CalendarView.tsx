@@ -1,7 +1,7 @@
 'use client';
 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import type { Schedule } from '@/types/schedulePlan';
+import type { SchedulePlan } from '@/types/schedulePlan';
 
 const WEEKDAY_LABELS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 
@@ -46,8 +46,8 @@ export interface CalendarViewProps {
   selectedDate: Date;
   onViewDateChange: (date: Date) => void;
   onSelectedDateChange: (date: Date) => void;
-  /** Nhóm schedule theo scheduledStart — ngày dự kiến thật (hoặc fallback createdAt). */
-  schedules: Schedule[];
+  /** Nhóm plan theo startTime. */
+  schedules: SchedulePlan[];
 }
 
 export default function CalendarView({
@@ -60,9 +60,9 @@ export default function CalendarView({
   const monthGrid = getMonthGrid(viewDate);
   const monthLabel = viewDate.toLocaleDateString('vi-VN', { month: 'long', year: 'numeric' });
 
-  const schedulesByDay = new Map<string, Schedule[]>();
+  const schedulesByDay = new Map<string, SchedulePlan[]>();
   for (const s of schedules) {
-    const key = new Date(s.scheduledStart).toDateString();
+    const key = new Date(s.startTime).toDateString();
     const list = schedulesByDay.get(key) ?? [];
     list.push(s);
     schedulesByDay.set(key, list);
@@ -116,9 +116,9 @@ export default function CalendarView({
               <div className="mt-1 space-y-0.5">
                 {daySchedules.slice(0, 2).map((s) => (
                   <span
-                    key={s.id}
+                    key={s.planId}
                     className={`block w-full truncate rounded px-1 py-0.5 text-[9px] font-bold ${
-                      s.activityType === 'survey'
+                      s.taskName?.toLowerCase().includes('khảo sát')
                         ? 'bg-blue-100 text-blue-700'
                         : 'bg-slate-100 text-slate-600'
                     }`}

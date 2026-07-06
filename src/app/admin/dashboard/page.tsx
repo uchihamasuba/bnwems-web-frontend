@@ -86,8 +86,8 @@ export default function Page() {
                       </span>
                       <span className="font-medium text-slate-700">{order.orderId}</span>
                     </span>
-                    <Badge variant={getStatusBadgeVariant(order.status)}>
-                      {ORDER_STATUS_LABEL[order.status] ?? order.status}
+                    <Badge variant={getStatusBadgeVariant(order.orderStatus)}>
+                      {ORDER_STATUS_LABEL[order.orderStatus] ?? order.orderStatus}
                     </Badge>
                   </Link>
                 ))}

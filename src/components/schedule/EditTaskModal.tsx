@@ -5,62 +5,62 @@ import type { AxiosError } from 'axios';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { workTaskApiService } from '@/services/workTask.service';
-import type { WorkTask } from '@/types/workTask';
+import { schedulePlanApiService } from '@/services/schedulePlan.service';
+import type { SchedulePlan } from '@/types/schedulePlan';
 
 interface EditTaskModalProps {
   isOpen: boolean;
-  task: WorkTask | null;
+  plan: SchedulePlan | null;
   onClose: () => void;
   onUpdated: () => void;
 }
 
-// PUT /api/v1/tasks/:id chỉ cho sửa khi task đang draft, và chỉ nhận scheduledStart/End/location
-// (không đổi được title/taskCategory sau khi tạo). Xem docs/more-require.md mục (bb).
-export default function EditTaskModal({ isOpen, task, onClose, onUpdated }: Readonly<EditTaskModalProps>) {
-  const [scheduledStart, setScheduledStart] = useState('');
-  const [scheduledEnd, setScheduledEnd] = useState('');
+// PUT /api/v1/schedule-plans/:id chỉ cho sửa khi status khác IN_PROGRESS/COMPLETED, và chỉ nhận
+// startTime/endTime/location/notes (không đổi được taskId/assignedTo sau khi tạo).
+export default function EditTaskModal({ isOpen, plan, onClose, onUpdated }: Readonly<EditTaskModalProps>) {
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
   const [location, setLocation] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !plan) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset form khi mở modal, không phải vòng lặp render
-    setScheduledStart('');
-    setScheduledEnd('');
-    setLocation('');
+    setStartTime(plan.startTime ? plan.startTime.slice(0, 16) : '');
+    setEndTime(plan.endTime ? plan.endTime.slice(0, 16) : '');
+    setLocation(plan.location ?? '');
     setError(null);
-  }, [isOpen]);
+  }, [isOpen, plan]);
 
   const handleSubmit = async () => {
-    if (!task) return;
+    if (!plan) return;
     setIsSubmitting(true);
     setError(null);
     try {
-      await workTaskApiService.updateTask(task.workTaskId, {
-        scheduledStart: scheduledStart ? new Date(scheduledStart).toISOString() : undefined,
-        scheduledEnd: scheduledEnd ? new Date(scheduledEnd).toISOString() : undefined,
+      await schedulePlanApiService.updateSchedulePlan(plan.planId, {
+        startTime: startTime ? new Date(startTime).toISOString() : undefined,
+        endTime: endTime ? new Date(endTime).toISOString() : undefined,
         location: location.trim() || undefined,
       });
       onUpdated();
       onClose();
     } catch (err) {
       const axiosError = err as AxiosError<{ message?: string }>;
-      setError(axiosError.response?.data?.message ?? 'Không thể cập nhật công việc. Vui lòng thử lại.');
+      setError(axiosError.response?.data?.message ?? 'Không thể cập nhật kế hoạch. Vui lòng thử lại.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (!task) return null;
+  if (!plan) return null;
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Sửa công việc"
-      subtitle={task.title}
+      title="Sửa kế hoạch"
+      subtitle={plan.taskName}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
@@ -74,11 +74,11 @@ export default function EditTaskModal({ isOpen, task, onClose, onUpdated }: Read
     >
       <div className="space-y-4">
         <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
-          Chỉ chỉnh sửa được thời gian/địa điểm dự kiến — không đổi được loại công việc hay tiêu đề sau khi tạo.
+          Chỉ chỉnh sửa được thời gian/địa điểm — không đổi được loại công việc hay nhân sự phụ trách sau khi tạo.
         </p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Input type="datetime-local" label="Bắt đầu dự kiến" value={scheduledStart} onChange={(e) => setScheduledStart(e.target.value)} />
-          <Input type="datetime-local" label="Kết thúc dự kiến" value={scheduledEnd} onChange={(e) => setScheduledEnd(e.target.value)} />
+          <Input type="datetime-local" label="Bắt đầu" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+          <Input type="datetime-local" label="Kết thúc" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
         </div>
         <Input label="Địa điểm" value={location} onChange={(e) => setLocation(e.target.value)} />
         {error && <p className="text-sm text-red-600">{error}</p>}

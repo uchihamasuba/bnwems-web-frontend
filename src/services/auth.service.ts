@@ -1,4 +1,5 @@
 import api from './api';
+import type { RegisterDeviceTokenPayload, UpdateProfilePayload } from '@/types/auth';
 
 export interface LoginPayload {
   username: string;
@@ -37,6 +38,18 @@ export const authApiService = {
   /** GET /api/v1/auth/profile */
   async getProfile() {
     const response = await api.get('/auth/profile');
+    return response.data;
+  },
+
+  /** PUT /api/v1/auth/profile */
+  async updateProfile(payload: UpdateProfilePayload) {
+    const response = await api.put('/auth/profile', payload);
+    return response.data;
+  },
+
+  /** POST /api/v1/auth/device-token */
+  async registerDeviceToken(payload: RegisterDeviceTokenPayload) {
+    const response = await api.post('/auth/device-token', payload);
     return response.data;
   },
 };

@@ -1,5 +1,4 @@
-import api from './api';
-import type { CreateChangeRequestPayload } from '@/types/changeRequest';
+import type { ChangeRequest, CreateChangeRequestPayload } from '@/types/changeRequest';
 
 export interface GetChangeRequestsQuery {
   orderId?: string;
@@ -8,22 +7,34 @@ export interface GetChangeRequestsQuery {
   limit?: number;
 }
 
+// ===== MOCK-ONLY =====
+// Model ChangeRequest đã bị XÓA HẲN khỏi backend thật (0 kết quả grep "ChangeRequest" trong
+// D:\bnwems-backend-api) — không còn route/controller/service/model nào tương ứng. Theo quyết định
+// giữ UI + chuyển sang mock rõ ràng (xem docs/more-require.md mục mới nhất), service này gọi
+// same-origin route handler mock của chính app (src/app/api/v1/change-requests/*, dữ liệu từ
+// src/mocks/seed.ts) thay vì `api` (trỏ backend thật — sẽ 404). XÓA toàn bộ mock này ngay khi
+// backend bổ sung lại API cho change-request.
 export const changeRequestApiService = {
-  /** GET /api/v1/change-requests (UC 2.27) */
   async getChangeRequests(params?: GetChangeRequestsQuery) {
-    const response = await api.get('/change-requests', { params });
-    return response.data;
+    const query = new URLSearchParams();
+    if (params?.orderId) query.set('orderId', params.orderId);
+    if (params?.status) query.set('status', params.status);
+    if (params?.page) query.set('page', String(params.page));
+    if (params?.limit) query.set('limit', String(params.limit));
+    const response = await fetch(`/api/v1/change-requests?${query.toString()}`);
+    return response.json() as Promise<{ success: boolean; data: ChangeRequest[]; meta: { totalCount: number } }>;
   },
 
-  /** POST /api/v1/orders/:orderId/change-requests (UC 2.27) */
-  async createChangeRequest(orderId: string, payload: CreateChangeRequestPayload) {
-    const response = await api.post(`/orders/${orderId}/change-requests`, payload);
-    return response.data;
+  async createChangeRequest(_orderId: string, _payload: CreateChangeRequestPayload) {
+    throw new Error('Không có API tạo change-request — mục này chỉ dùng để mobile Leader Staff ghi nhận (ngoài phạm vi web).');
   },
 
-  /** PUT /api/v1/change-requests/:id/approve (UC 2.27) */
   async approveChangeRequest(id: string, status: 'approved' | 'rejected') {
-    const response = await api.put(`/change-requests/${id}/approve`, { status });
-    return response.data;
+    const response = await fetch(`/api/v1/change-requests/${id}/approve`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    return response.json();
   },
 };

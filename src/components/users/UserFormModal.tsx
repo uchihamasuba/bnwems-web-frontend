@@ -6,7 +6,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
-import { ROLE_OPTIONS } from '@/constants/roles';
+import { USER_ROLE_OPTIONS } from '@/constants/roles';
 import type { AdminUser, UserRole } from '@/types/user';
 
 export interface UserFormValues {
@@ -30,7 +30,7 @@ const EMPTY_VALUES: UserFormValues = {
   username: '',
   password: '',
   fullName: '',
-  role: 'Manager',
+  role: 'MANAGER',
 };
 
 export function UserFormModal({
@@ -109,7 +109,7 @@ export function UserFormModal({
             required
             value={values.role}
             onChange={(e) => setValues((v) => ({ ...v, role: e.target.value as UserRole }))}
-            options={ROLE_OPTIONS}
+            options={USER_ROLE_OPTIONS}
           />
         </div>
 

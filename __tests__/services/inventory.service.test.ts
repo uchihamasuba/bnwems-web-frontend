@@ -1,6 +1,7 @@
 /**
  * @file inventory.service.test.ts
- * Unit tests for the Warehouse/Inventory API Service wrapper (docs/api/05-warehouse-inventory.md).
+ * Unit tests for the Inventory API Service wrapper sau đợt refactor 2026-07-06 — không còn khái
+ * niệm nhiều kho (warehouseId), Inventory khoá 1-1 theo itemId (types/inventory.ts).
  */
 
 jest.mock('axios', () => {
@@ -43,127 +44,70 @@ const mockApi = api as jest.Mocked<typeof api>;
 describe('inventoryApiService — getInventory()', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('should call GET /inventory with query params (UC 2.13)', async () => {
+  it('should call GET /inventory with query params', async () => {
     const mockResponse = { data: { success: true, data: [], meta: { page: 1, limit: 20, totalCount: 0 } } };
     (mockApi.get as jest.Mock).mockResolvedValue(mockResponse);
 
-    await inventoryApiService.getInventory({ warehouseId: 'wh-1', catalogItemId: 'item-6', page: 1, limit: 20 });
+    await inventoryApiService.getInventory({ itemId: 'item-6', page: 1, limit: 20 });
 
     expect(mockApi.get).toHaveBeenCalledWith('/inventory', {
-      params: { warehouseId: 'wh-1', catalogItemId: 'item-6', page: 1, limit: 20 },
+      params: { itemId: 'item-6', page: 1, limit: 20 },
     });
   });
 });
 
-describe('inventoryApiService — createInventory()', () => {
+describe('inventoryApiService — adjustInventory()', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('should call POST /inventory with body (outside doc, see types/inventory.ts)', async () => {
-    const mockResponse = { data: { success: true, message: 'Tạo bản ghi tồn kho thành công.' } };
+  it('should call POST /inventory/adjust with body (quantityChange có thể âm)', async () => {
+    const mockResponse = { data: { success: true } };
     (mockApi.post as jest.Mock).mockResolvedValue(mockResponse);
 
-    const body = { warehouseId: 'wh-1', catalogItemId: 'item-6', availableQuantity: 50 };
-    await inventoryApiService.createInventory(body);
+    const body = { itemId: 'item-6', quantityChange: -5, notes: 'Hỏng 5 cái' };
+    await inventoryApiService.adjustInventory(body);
 
-    expect(mockApi.post).toHaveBeenCalledWith('/inventory', body);
+    expect(mockApi.post).toHaveBeenCalledWith('/inventory/adjust', body);
   });
 });
 
-describe('inventoryApiService — updateInventory()', () => {
+describe('inventoryApiService — getMovements()', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('should call PUT /inventory/:id with body (outside doc, see types/inventory.ts)', async () => {
-    const mockResponse = { data: { success: true, message: 'Cập nhật tồn kho thành công.' } };
-    (mockApi.put as jest.Mock).mockResolvedValue(mockResponse);
-
-    const body = {
-      availableQuantity: 40,
-      reservedQuantity: 10,
-      checkedOutQuantity: 5,
-      damagedQuantity: 1,
-      lostQuantity: 0,
-    };
-    await inventoryApiService.updateInventory('inv-1', body);
-
-    expect(mockApi.put).toHaveBeenCalledWith('/inventory/inv-1', body);
-  });
-});
-
-describe('inventoryApiService — getInventoryAvailability()', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('should call GET /inventory/availability with query params (UC 2.13)', async () => {
-    const mockResponse = {
-      data: { success: true, data: { catalogItemId: 'item-6', isAvailable: true, availableQuantityOnDate: 80 } },
-    };
-    (mockApi.get as jest.Mock).mockResolvedValue(mockResponse);
-
-    const result = await inventoryApiService.getInventoryAvailability({ eventDate: '2026-10-15', itemId: 'item-6' });
-
-    expect(mockApi.get).toHaveBeenCalledWith('/inventory/availability', {
-      params: { eventDate: '2026-10-15', itemId: 'item-6' },
-    });
-    expect(result.data.isAvailable).toBe(true);
-  });
-});
-
-describe('inventoryApiService — reserveInventory()', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('should call POST /inventory/reserve with body (UC 2.13)', async () => {
-    const mockResponse = { data: { success: true, message: 'Inventory successfully reserved.' } };
-    (mockApi.post as jest.Mock).mockResolvedValue(mockResponse);
-
-    const body = { orderId: 'order-1', items: [{ catalogItemId: 'item-6', quantity: 5 }] };
-    await inventoryApiService.reserveInventory(body);
-
-    expect(mockApi.post).toHaveBeenCalledWith('/inventory/reserve', body);
-  });
-});
-
-describe('inventoryApiService — getWarehouseHistories()', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('should call GET /warehouse-histories with query params (UC 2.23)', async () => {
+  it('should call GET /inventory/movements with query params', async () => {
     const mockResponse = { data: { success: true, data: [], meta: { page: 1, limit: 20, totalCount: 0 } } };
     (mockApi.get as jest.Mock).mockResolvedValue(mockResponse);
 
-    await inventoryApiService.getWarehouseHistories({ transactionType: 'CHECKOUT', page: 1, limit: 20 });
+    await inventoryApiService.getMovements({ itemId: 'item-6', movementType: 'ADJUSTMENT' });
 
-    expect(mockApi.get).toHaveBeenCalledWith('/warehouse-histories', {
-      params: { transactionType: 'CHECKOUT', page: 1, limit: 20 },
+    expect(mockApi.get).toHaveBeenCalledWith('/inventory/movements', {
+      params: { itemId: 'item-6', movementType: 'ADJUSTMENT' },
     });
   });
 });
 
-describe('inventoryApiService — checkoutWarehouse()', () => {
+describe('inventoryApiService — createReturnReport() / confirmReturnReport()', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('should call POST /warehouse/checkout with body (UC 2.23)', async () => {
-    const mockResponse = { data: { success: true, message: 'Items checked out successfully.' } };
-    (mockApi.post as jest.Mock).mockResolvedValue(mockResponse);
-
-    const body = { warehouseId: 'wh-1', orderId: 'order-1', items: [{ catalogItemId: 'item-6', quantity: 10 }] };
-    await inventoryApiService.checkoutWarehouse(body);
-
-    expect(mockApi.post).toHaveBeenCalledWith('/warehouse/checkout', body);
-  });
-});
-
-describe('inventoryApiService — returnWarehouse()', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('should call POST /warehouse/return with body (UC 2.23)', async () => {
-    const mockResponse = { data: { success: true, message: 'Items returned to warehouse.' } };
+  it('should call POST /inventory/return-reports with body', async () => {
+    const mockResponse = { data: { success: true, data: { reportId: 'rpt-1' } } };
     (mockApi.post as jest.Mock).mockResolvedValue(mockResponse);
 
     const body = {
-      warehouseId: 'wh-1',
       orderId: 'order-1',
-      items: [{ catalogItemId: 'item-6', quantity: 10, condition: 'GOOD' as const }],
+      reportType: 'INTERNAL' as const,
+      items: [{ itemId: 'item-6', goodQuantity: 8, damagedQuantity: 1, lostQuantity: 1 }],
     };
-    await inventoryApiService.returnWarehouse(body);
+    await inventoryApiService.createReturnReport(body);
 
-    expect(mockApi.post).toHaveBeenCalledWith('/warehouse/return', body);
+    expect(mockApi.post).toHaveBeenCalledWith('/inventory/return-reports', body);
+  });
+
+  it('should call PUT /inventory/return-reports/{id}/confirm', async () => {
+    const mockResponse = { data: { success: true } };
+    (mockApi.put as jest.Mock).mockResolvedValue(mockResponse);
+
+    await inventoryApiService.confirmReturnReport('rpt-1');
+
+    expect(mockApi.put).toHaveBeenCalledWith('/inventory/return-reports/rpt-1/confirm');
   });
 });

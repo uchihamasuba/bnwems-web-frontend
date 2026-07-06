@@ -3,60 +3,68 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { UserPlus, Trash2, Loader2 } from 'lucide-react';
-import { workTaskApiService } from '@/services/workTask.service';
+import { Loader2, Ban } from 'lucide-react';
+import { schedulePlanApiService } from '@/services/schedulePlan.service';
 import { Badge } from '@/components/ui/Badge';
-import AssignTaskStaffModal from '@/components/schedule/AssignTaskStaffModal';
-import { TASK_CATEGORY_LABEL, TASK_STATUS_LABEL } from '@/constants/work-task';
-import type { WorkTask, WorkTaskStatus } from '@/types/workTask';
+import { SCHEDULE_STATUS_LABEL } from '@/constants/work-task';
+import { formatDate, formatTime } from '@/utils/formatDate';
+import type { SchedulePlan, ScheduleStatus } from '@/types/schedulePlan';
 import type { Order } from '@/types/order';
 import type { Customer } from '@/types/customer';
 
-const STATUS_COLUMNS: WorkTaskStatus[] = ['draft', 'assigned', 'in_progress', 'done'];
+const STATUS_COLUMNS: ScheduleStatus[] = ['PENDING', 'CONFIRMED', 'IN_PROGRESS', 'COMPLETED'];
 
-const NEXT_STATUS: Record<WorkTaskStatus, Exclude<WorkTaskStatus, 'draft'> | null> = {
-  draft: 'assigned',
-  assigned: 'in_progress',
-  in_progress: 'done',
-  done: null,
+const NEXT_STATUS: Record<ScheduleStatus, ScheduleStatus | null> = {
+  PENDING: 'CONFIRMED',
+  CONFIRMED: 'IN_PROGRESS',
+  IN_PROGRESS: 'COMPLETED',
+  COMPLETED: null,
+  CANCELLED: null,
 };
 
 export interface TaskKanbanBoardProps {
-  tasks: WorkTask[];
+  plans: SchedulePlan[];
   orderById: Map<string, Order>;
   customerById: Map<string, Customer>;
   onRefresh: () => void | Promise<void>;
 }
 
-export default function TaskKanbanBoard({ tasks, orderById, customerById, onRefresh }: Readonly<TaskKanbanBoardProps>) {
-  const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
-  const [assigningTask, setAssigningTask] = useState<WorkTask | null>(null);
+// Kanban theo SchedulePlan.status thật — thay thế WorkTask.status cũ (không còn tồn tại theo
+// instance). Không có endpoint xóa SchedulePlan, chỉ có đổi trạng thái (kể cả "hủy").
+export default function TaskKanbanBoard({ plans, orderById, customerById, onRefresh }: Readonly<TaskKanbanBoardProps>) {
+  const [movingId, setMovingId] = useState<string | null>(null);
 
-  const columns: Record<WorkTaskStatus, WorkTask[]> = { draft: [], assigned: [], in_progress: [], done: [] };
-  for (const task of tasks) {
-    (columns[task.status] ?? columns.draft).push(task);
+  const columns: Record<ScheduleStatus, SchedulePlan[]> = {
+    PENDING: [],
+    CONFIRMED: [],
+    IN_PROGRESS: [],
+    COMPLETED: [],
+    CANCELLED: [],
+  };
+  for (const plan of plans) {
+    (columns[plan.status] ?? columns.PENDING).push(plan);
   }
 
-  const handleAdvance = async (task: WorkTask) => {
-    const next = NEXT_STATUS[task.status];
+  const handleAdvance = async (plan: SchedulePlan) => {
+    const next = NEXT_STATUS[plan.status];
     if (!next) return;
-    setMovingTaskId(task.workTaskId);
+    setMovingId(plan.planId);
     try {
-      await workTaskApiService.updateTaskProgress(task.workTaskId, { status: next });
+      await schedulePlanApiService.updateSchedulePlanStatus(plan.planId, { status: next });
       await onRefresh();
     } finally {
-      setMovingTaskId(null);
+      setMovingId(null);
     }
   };
 
-  const handleCancel = async (task: WorkTask) => {
-    if (!confirm(`Xóa công việc "${task.title}" khỏi hệ thống?`)) return;
-    setMovingTaskId(task.workTaskId);
+  const handleCancel = async (plan: SchedulePlan) => {
+    if (!confirm(`Hủy kế hoạch "${plan.taskName ?? plan.planCode}"?`)) return;
+    setMovingId(plan.planId);
     try {
-      await workTaskApiService.cancelTask(task.workTaskId, 'deleted');
+      await schedulePlanApiService.updateSchedulePlanStatus(plan.planId, { status: 'CANCELLED' });
       await onRefresh();
     } finally {
-      setMovingTaskId(null);
+      setMovingId(null);
     }
   };
 
@@ -72,62 +80,52 @@ export default function TaskKanbanBoard({ tasks, orderById, customerById, onRefr
           className="rounded-xl border border-slate-200 bg-slate-50 p-3"
         >
           <div className="mb-3 flex items-center justify-between px-1">
-            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">{TASK_STATUS_LABEL[status]}</h3>
+            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">{SCHEDULE_STATUS_LABEL[status]}</h3>
             <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-500 shadow-xs">{columns[status].length}</span>
           </div>
 
           <div className="space-y-3">
             {columns[status].length === 0 && <p className="px-1 text-xs text-slate-400">Không có công việc nào.</p>}
-            {columns[status].map((task) => {
-              const order = orderById.get(task.orderId);
+            {columns[status].map((plan) => {
+              const order = orderById.get(plan.orderId);
               const customer = order ? customerById.get(order.customerId) : undefined;
-              const next = NEXT_STATUS[task.status];
-              const isBusy = movingTaskId === task.workTaskId;
+              const next = NEXT_STATUS[plan.status];
+              const isBusy = movingId === plan.planId;
               return (
-                <div key={task.workTaskId} className="rounded-lg border border-slate-200 bg-white p-3 shadow-xs">
+                <div key={plan.planId} className="rounded-lg border border-slate-200 bg-white p-3 shadow-xs">
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm font-semibold leading-snug text-slate-800">{task.title}</p>
-                    <Badge variant={task.taskCategory === 'survey' ? 'info' : 'neutral'}>{TASK_CATEGORY_LABEL[task.taskCategory]}</Badge>
+                    <p className="text-sm font-semibold leading-snug text-slate-800">{plan.taskName ?? `Task #${plan.taskId}`}</p>
+                    <Badge variant="neutral">{formatDate(plan.startTime)}</Badge>
                   </div>
-                  <Link href={`/manager/orders/${task.orderId}`} className="mt-1.5 block truncate text-xs font-medium text-blue-600 hover:underline">
-                    #{task.orderId} — {customer?.fullName ?? `KH #${order?.customerId ?? '—'}`}
+                  <Link href={`/manager/orders/${plan.orderId}`} className="mt-1.5 block truncate text-xs font-medium text-blue-600 hover:underline">
+                    #{order?.orderCode ?? plan.orderId} — {customer?.customerName ?? `KH #${order?.customerId ?? '—'}`}
                   </Link>
-
-                  <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                    <div className="h-full rounded-full bg-blue-600" style={{ width: `${task.progressPercent}%` }} />
-                  </div>
-                  <p className="mt-1 text-[11px] text-slate-400">{task.progressPercent}% hoàn thành</p>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    {plan.assigneeName ?? `NV #${plan.assignedTo}`} · {formatTime(plan.startTime)}
+                  </p>
 
                   <div className="mt-3 flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setAssigningTask(task)}
-                      className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-600 hover:bg-blue-100"
-                    >
-                      <UserPlus className="h-3 w-3" />
-                      Phân công
-                    </button>
                     {next && (
                       <button
                         type="button"
                         disabled={isBusy}
-                        onClick={() => handleAdvance(task)}
+                        onClick={() => handleAdvance(plan)}
                         className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-200 disabled:opacity-50"
                       >
                         {isBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-                        Chuyển sang &quot;{TASK_STATUS_LABEL[next]}&quot;
+                        Chuyển sang &quot;{SCHEDULE_STATUS_LABEL[next]}&quot;
                       </button>
                     )}
-                    {task.status === 'draft' && (
+                    {plan.status === 'PENDING' && (
                       <button
                         type="button"
                         disabled={isBusy}
-                        onClick={() => handleCancel(task)}
-                        aria-label="Xóa công việc"
-                        title="Xóa công việc"
+                        onClick={() => handleCancel(plan)}
+                        aria-label="Hủy kế hoạch"
+                        title="Hủy kế hoạch"
                         className="ml-auto rounded-md p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Ban className="h-3.5 w-3.5" />
                       </button>
                     )}
                   </div>
@@ -137,13 +135,6 @@ export default function TaskKanbanBoard({ tasks, orderById, customerById, onRefr
           </div>
         </motion.div>
       ))}
-
-      <AssignTaskStaffModal
-        isOpen={Boolean(assigningTask)}
-        task={assigningTask}
-        onClose={() => setAssigningTask(null)}
-        onAssigned={() => onRefresh()}
-      />
     </div>
   );
 }

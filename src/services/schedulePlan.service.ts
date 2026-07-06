@@ -1,18 +1,33 @@
 import api from './api';
-import type { Schedule, GetSchedulesQuery } from '@/types/schedulePlan';
-
-interface ScheduleListResponse {
-  success: boolean;
-  data: Schedule[];
-  meta: { page: number; limit: number; totalCount: number };
-}
+import type {
+  CreateSchedulePlanPayload,
+  GetSchedulePlansQuery,
+  UpdateSchedulePlanPayload,
+  UpdateSchedulePlanStatusPayload,
+} from '@/types/schedulePlan';
 
 export const schedulePlanApiService = {
-  /** GET /api/v1/schedules — lịch kế hoạch kèm scheduledStart/End/location.
-   *  Dữ liệu wrap từ WorkTask; scheduledStart/End lấy từ WorkTask.description JSON khi có,
-   *  hoặc fallback task.createdAt/updatedAt. Xem docs/more-require.md mục (bb). */
-  async getSchedules(params?: GetSchedulesQuery): Promise<ScheduleListResponse> {
-    const response = await api.get('/schedules', { params });
+  /** GET /api/v1/schedule-plans */
+  async getSchedulePlans(params?: GetSchedulePlansQuery) {
+    const response = await api.get('/schedule-plans', { params });
+    return response.data;
+  },
+
+  /** POST /api/v1/schedule-plans */
+  async createSchedulePlan(payload: CreateSchedulePlanPayload) {
+    const response = await api.post('/schedule-plans', payload);
+    return response.data;
+  },
+
+  /** PUT /api/v1/schedule-plans/:id — chỉ khi status khác IN_PROGRESS/COMPLETED */
+  async updateSchedulePlan(planId: string, payload: UpdateSchedulePlanPayload) {
+    const response = await api.put(`/schedule-plans/${planId}`, payload);
+    return response.data;
+  },
+
+  /** PATCH /api/v1/schedule-plans/:id/status */
+  async updateSchedulePlanStatus(planId: string, payload: UpdateSchedulePlanStatusPayload) {
+    const response = await api.patch(`/schedule-plans/${planId}/status`, payload);
     return response.data;
   },
 };

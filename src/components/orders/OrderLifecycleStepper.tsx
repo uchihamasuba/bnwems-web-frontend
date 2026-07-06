@@ -8,10 +8,10 @@ const STEP_LABELS = ['Mới', 'Đã khảo sát', 'Đã báo giá', 'Đã xác n
 // order nào đã qua "draft" được coi là đã khảo sát+báo giá xong (đơn không thể "confirmed" nếu
 // chưa có báo giá), không phải lấy từ trạng thái thật riêng của Survey/Quotation.
 function stepIndexForStatus(status: OrderStatus): number {
-  if (status === 'confirmed') return 3;
-  if (status === 'in_progress') return 4;
-  if (status === 'completed') return 5;
-  return 0; // draft
+  if (status === 'CONFIRMED') return 3;
+  if (status === 'IN_PROGRESS') return 4;
+  if (status === 'COMPLETED') return 5;
+  return 0; // NEW
 }
 
 interface OrderLifecycleStepperProps {
@@ -19,7 +19,7 @@ interface OrderLifecycleStepperProps {
 }
 
 export default function OrderLifecycleStepper({ status }: Readonly<OrderLifecycleStepperProps>) {
-  if (status === 'cancelled') {
+  if (status === 'CANCELLED') {
     return (
       <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-center text-sm font-semibold text-red-600">
         Đơn hàng đã hủy
@@ -33,8 +33,8 @@ export default function OrderLifecycleStepper({ status }: Readonly<OrderLifecycl
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="flex items-start">
         {STEP_LABELS.map((label, index) => {
-          const isDone = index < currentIndex || status === 'completed';
-          const isCurrent = index === currentIndex && status !== 'completed';
+          const isDone = index < currentIndex || status === 'COMPLETED';
+          const isCurrent = index === currentIndex && status !== 'COMPLETED';
           return (
             <div key={label} className="flex flex-1 items-center">
               <div className="flex flex-col items-center gap-2">

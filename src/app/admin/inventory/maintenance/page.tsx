@@ -2,14 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
-import { catalogApiService } from '@/services/catalog.service';
 import { inventoryApiService } from '@/services/inventory.service';
 import { Table, TableColumn } from '@/components/ui/Table';
 import { Input } from '@/components/ui/Input';
 import { Badge, getStatusBadgeVariant } from '@/components/ui/Badge';
 import { useDebounce } from '@/hooks/useDebounce';
 import { formatDate } from '@/utils/formatDate';
-import type { CatalogItem } from '@/types/catalog';
 import type { InventoryRow } from '@/types/inventory';
 
 interface MaintenanceRow {
@@ -28,19 +26,17 @@ export default function Page() {
   const debouncedSearch = useDebounce(search, 400);
 
   useEffect(() => {
-    Promise.all([catalogApiService.getCatalogItems({ limit: 200 }), inventoryApiService.getInventory({ limit: 500 })])
-      .then(([itemsRes, inventoryRes]) => {
-        const itemsById = new Map((itemsRes.data as CatalogItem[]).map((item) => [item.id, item]));
-
+    inventoryApiService
+      .getInventory({ limit: 500 })
+      .then((inventoryRes) => {
         const maintenanceRows: MaintenanceRow[] = (inventoryRes.data as InventoryRow[])
-          .filter((row) => row.damagedQuantity > 0)
+          .filter((row) => row.quantityDamaged > 0)
           .map((row) => ({
-            inventoryId: row.id,
-            itemId: row.catalogItemId,
-            itemName: itemsById.get(row.catalogItemId)?.name ?? row.catalogItemId,
-            damagedQuantity: row.damagedQuantity,
-            totalQuantity:
-              row.availableQuantity + row.reservedQuantity + row.checkedOutQuantity + row.damagedQuantity + row.lostQuantity,
+            inventoryId: row.inventoryId,
+            itemId: row.itemId,
+            itemName: row.itemName ?? row.itemId,
+            damagedQuantity: row.quantityDamaged,
+            totalQuantity: row.quantityTotal,
             updatedAt: row.updatedAt,
           }));
 

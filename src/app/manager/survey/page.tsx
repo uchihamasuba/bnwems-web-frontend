@@ -1,137 +1,111 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Eye, MapPin, User, Search, ClipboardList, FileCheck2, Clock, AlertTriangle } from 'lucide-react';
-import { workTaskApiService } from '@/services/workTask.service';
+import { Eye, MapPin, User, Search, ClipboardList, FileCheck2, Clock } from 'lucide-react';
 import { orderApiService } from '@/services/order.service';
 import { customerApiService } from '@/services/customer.service';
 import { surveyApiService } from '@/services/survey.service';
-import { assignmentApiService } from '@/services/assignment.service';
+import { schedulePlanApiService } from '@/services/schedulePlan.service';
 import { Table, TableColumn } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
 import { Select } from '@/components/ui/Select';
+import { Button } from '@/components/ui/Button';
 import DashboardStats, { KpiCardItem } from '@/components/reports/DashboardStats';
 import SurveyReportDrawer, { SurveyRow } from '@/components/survey/SurveyReportDrawer';
 import { formatDate } from '@/utils/formatDate';
-import type { WorkTask } from '@/types/workTask';
 import type { Order } from '@/types/order';
 import type { Customer } from '@/types/customer';
+import type { SchedulePlan } from '@/types/schedulePlan';
 
 // ---------------------------------------------------------------------------
-// Backend không có endpoint liệt kê báo cáo khảo sát riêng — trang này gom TẤT CẢ WorkTask thật
-// (GET /tasks, UC 2.14) rồi tự lọc taskCategory === 'survey' phía client. Không dùng query param
-// `taskType` — backend lọc nhầm theo cột `title` tự do (docs/more-require.md mục bb).
-// getOrderAssignments là MOCK-ONLY (mục n) — surveyorName có thể trống nếu Manager chưa phân công
-// KSV qua tab "Khảo sát & Nhân sự" của đơn hàng.
-// SurveyReport thật (types/survey.ts) không có measurements/proposedItems như prototype mock —
-// phần chi tiết (SurveyReportDrawer) chỉ hiển thị đúng field thật: ghi chú, ảnh, người nộp.
-// "Ngày khảo sát" là MOCK (WorkTask không có cột ngày dự kiến thật, xem mục bb) — luôn in nghiêng.
+// Backend không có endpoint liệt kê báo cáo khảo sát toàn hệ thống — trang này quét từng trang
+// đơn hàng (GET /orders) rồi gọi song song GET /orders/:orderId/survey-reports (báo cáo, nếu có) +
+// GET /schedule-plans?orderId= (lịch khảo sát, để biết ai phụ trách + ngày dự kiến khi chưa nộp
+// báo cáo). Tất cả field hiển thị đều là dữ liệu thật — không còn mock ngày/tiến độ như trước.
 // ---------------------------------------------------------------------------
+
+const ORDER_BATCH_SIZE = 10;
 
 const STATUS_FILTER_OPTIONS = [
   { value: '', label: 'Tất cả trạng thái' },
   { value: 'submitted', label: 'Đã nộp báo cáo' },
   { value: 'pending', label: 'Chưa nộp báo cáo' },
-  { value: 'overdue', label: 'Quá hạn' },
 ];
 
-/** MOCK — WorkTask thật không có ngày khảo sát dự kiến (xem docs/more-require.md mục bb). Suy ra
- * quyết định từ createdAt (+2 ngày) để ổn định qua các lần tải lại, KHÔNG phải dữ liệu thật. */
-function mockSurveyDateFor(task: WorkTask): string {
-  const base = new Date(task.createdAt);
-  base.setDate(base.getDate() + 2);
-  return base.toISOString();
+function isSurveyPlan(plan: SchedulePlan): boolean {
+  return plan.taskName?.toLowerCase().includes('khảo sát') ?? false;
 }
 
-function computeRowState(row: SurveyRow): 'submitted' | 'overdue' | 'pending' {
-  if (row.report) return 'submitted';
-  return new Date(row.mockSurveyDate) < new Date() ? 'overdue' : 'pending';
+function computeRowState(row: SurveyRow): 'submitted' | 'pending' {
+  return row.report ? 'submitted' : 'pending';
 }
 
-// MOCK: tiến trình khảo sát (%) — backend thật không có field này
-function mockProgressPct(row: SurveyRow): number {
-  if (computeRowState(row) === 'submitted') return 100;
-  const seed = row.task.orderId.split('').reduce((a, c) => a + (c.codePointAt(0) ?? 0), 0);
-  return 35 + (seed % 40); // 35–75%
-}
-
-function progressBarColor(state: 'submitted' | 'overdue' | 'pending'): string {
-  if (state === 'submitted') return 'bg-green-500';
-  if (state === 'overdue') return 'bg-red-400';
-  return 'bg-amber-400';
-}
-
-function fetchReportOrNull(task: WorkTask) {
-  return surveyApiService
-    .getSurveyReport(task.workTaskId)
-    .then((r) => r.data)
-    .catch(() => null);
-}
-
-function fetchAssignmentsEntry(orderId: string) {
-  return assignmentApiService
-    .getOrderAssignments(orderId)
-    .then((r) => [orderId, r.data] as const)
-    .catch(() => [orderId, null] as const);
-}
-
-async function loadSurveyRows(): Promise<SurveyRow[]> {
-  const [tasksRes, ordersRes, customersRes] = await Promise.all([
-    workTaskApiService.getTasks({ limit: 200 }),
-    orderApiService.getOrders({ limit: 200 }),
-    customerApiService.getCustomers({ limit: 200 }),
+async function fetchSurveyRowsForOrder(order: Order, customerById: Map<string, Customer>): Promise<SurveyRow | null> {
+  const [reportsRes, plansRes] = await Promise.all([
+    surveyApiService.getOrderSurveyReports(order.orderId).catch(() => ({ data: [] })),
+    schedulePlanApiService.getSchedulePlans({ orderId: order.orderId }).catch(() => ({ data: [] })),
   ]);
-  const allTasks: WorkTask[] = tasksRes.data ?? [];
-  const tasks = allTasks.filter((t) => t.taskCategory === 'survey');
-  const orders: Order[] = ordersRes.data ?? [];
-  const customers: Customer[] = customersRes.data ?? [];
-  const orderById = new Map(orders.map((o) => [o.orderId, o]));
-  const customerById = new Map(customers.map((c) => [c.customerId, c]));
-  const uniqueOrderIds = [...new Set(tasks.map((t) => t.orderId))];
+  const reports = reportsRes.data ?? [];
+  const plans: SchedulePlan[] = (plansRes.data ?? []).filter(isSurveyPlan);
+  if (reports.length === 0 && plans.length === 0) return null;
 
-  const [reports, assignmentEntries] = await Promise.all([
-    Promise.all(tasks.map(fetchReportOrNull)),
-    Promise.all(uniqueOrderIds.map(fetchAssignmentsEntry)),
-  ]);
-  const assignmentByOrderId = new Map(assignmentEntries);
-
-  return tasks.map((task, idx) => {
-    const order = orderById.get(task.orderId);
-    const assignments = assignmentByOrderId.get(task.orderId);
-    return {
-      task,
-      order,
-      customer: order ? customerById.get(order.customerId) : undefined,
-      report: reports[idx],
-      surveyorName: assignments?.survey?.members[0]?.fullName,
-      mockSurveyDate: mockSurveyDateFor(task),
-    };
-  });
+  return {
+    orderId: order.orderId,
+    plan: plans[0] ?? null,
+    order,
+    customer: customerById.get(order.customerId),
+    report: reports[0] ?? null,
+  };
 }
 
 export default function Page() {
   const [rows, setRows] = useState<SurveyRow[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [ordersLoaded, setOrdersLoaded] = useState(0);
+  const [ordersTotalCount, setOrdersTotalCount] = useState<number | null>(null);
+  const [currentOrderPage, setCurrentOrderPage] = useState(0);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [activeRow, setActiveRow] = useState<SurveyRow | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag toggled before/after the fetch below, not a render loop
-    setIsLoading(true);
-    loadSurveyRows().then((result) => {
-      if (cancelled) return;
-      setRows(result);
-      setIsLoading(false);
-    });
-    return () => {
-      cancelled = true;
-    };
+    customerApiService.getCustomers({ limit: 200 }).then((res) => setCustomers(res.data ?? []));
   }, []);
+
+  const customerById = useMemo(() => new Map(customers.map((c) => [c.customerId, c])), [customers]);
+
+  const loadOrderPage = async (page: number) => {
+    const ordersRes = await orderApiService.getOrders({ page, limit: ORDER_BATCH_SIZE });
+    const orders: Order[] = ordersRes.data ?? [];
+    setOrdersTotalCount(ordersRes.meta?.totalCount ?? 0);
+    const perOrder = await Promise.all(orders.map((o) => fetchSurveyRowsForOrder(o, customerById)));
+    setRows((prev) => [...prev, ...perOrder.filter((r): r is SurveyRow => r !== null)]);
+    setOrdersLoaded((prev) => prev + orders.length);
+    setCurrentOrderPage(page);
+  };
+
+  const hasLoadedInitialPage = useRef(false);
+  useEffect(() => {
+    if (hasLoadedInitialPage.current) return;
+    hasLoadedInitialPage.current = true;
+    loadOrderPage(1).finally(() => setIsInitialLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleLoadMore = async () => {
+    setIsLoadingMore(true);
+    try {
+      await loadOrderPage(currentOrderPage + 1);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   const filteredRows = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -140,31 +114,31 @@ export default function Page() {
       if (statusFilter && state !== statusFilter) return false;
       if (!term) return true;
       return (
-        row.task.orderId.toLowerCase().includes(term) ||
-        (row.customer?.fullName?.toLowerCase().includes(term) ?? false) ||
-        (row.order?.eventLocation?.toLowerCase().includes(term) ?? false)
+        row.orderId.toLowerCase().includes(term) ||
+        (row.customer?.customerName?.toLowerCase().includes(term) ?? false) ||
+        (row.order?.location?.toLowerCase().includes(term) ?? false)
       );
     });
   }, [rows, searchTerm, statusFilter]);
 
   const submittedCount = rows.filter((r) => computeRowState(r) === 'submitted').length;
   const pendingCount = rows.filter((r) => computeRowState(r) === 'pending').length;
-  const overdueCount = rows.filter((r) => computeRowState(r) === 'overdue').length;
 
   const kpiItems: KpiCardItem[] = [
     { label: 'Tổng khảo sát', value: rows.length, icon: ClipboardList, iconColor: 'blue' },
     { label: 'Đã nộp báo cáo', value: submittedCount, icon: FileCheck2, iconColor: 'green' },
     { label: 'Chưa nộp báo cáo', value: pendingCount, icon: Clock, iconColor: 'amber' },
-    { label: 'Quá hạn', value: overdueCount, icon: AlertTriangle, iconColor: overdueCount > 0 ? 'red' : 'green' },
   ];
+
+  const hasMoreOrders = ordersTotalCount !== null && ordersLoaded < ordersTotalCount;
 
   const columns: TableColumn<SurveyRow>[] = [
     {
       key: 'orderId',
       label: 'Mã đơn',
       render: (row) => (
-        <Link href={`/manager/orders/${row.task.orderId}`} className="font-mono text-sm font-semibold text-blue-600 hover:underline">
-          #{row.task.orderId}
+        <Link href={`/manager/orders/${row.orderId}`} className="font-mono text-sm font-semibold text-blue-600 hover:underline">
+          {row.order?.orderCode ?? `#${row.orderId}`}
         </Link>
       ),
     },
@@ -173,8 +147,8 @@ export default function Page() {
       label: 'Khách hàng',
       render: (row) => (
         <div className="flex items-center gap-2.5">
-          <Avatar name={row.customer?.fullName ?? String(row.order?.customerId ?? '?')} size="sm" />
-          <span className="truncate font-medium text-slate-700">{row.customer?.fullName ?? `KH #${row.order?.customerId ?? '—'}`}</span>
+          <Avatar name={row.customer?.customerName ?? String(row.order?.customerId ?? '?')} size="sm" />
+          <span className="truncate font-medium text-slate-700">{row.customer?.customerName ?? `KH #${row.order?.customerId ?? '—'}`}</span>
         </div>
       ),
     },
@@ -182,21 +156,18 @@ export default function Page() {
       key: 'location',
       label: 'Địa điểm sảnh khảo sát',
       render: (row) => (
-        <span className="flex max-w-[200px] items-center gap-1 truncate text-sm text-slate-600" title={row.order?.eventLocation}>
+        <span className="flex max-w-[200px] items-center gap-1 truncate text-sm text-slate-600" title={row.order?.location}>
           <MapPin className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
-          {row.order?.eventLocation ?? '—'}
+          {row.order?.location ?? '—'}
         </span>
       ),
     },
     {
-      key: 'mockSurveyDate',
+      key: 'surveyDate',
       label: 'Ngày khảo sát',
       render: (row) => (
-        <span
-          className="whitespace-nowrap text-sm italic text-slate-500"
-          title="Dữ liệu minh họa — chưa có API ngày khảo sát thật"
-        >
-          {formatDate(row.mockSurveyDate)}
+        <span className="whitespace-nowrap text-sm text-slate-500">
+          {row.report ? formatDate(row.report.surveyDate) : row.plan ? formatDate(row.plan.startTime) : '—'}
         </span>
       ),
     },
@@ -204,31 +175,14 @@ export default function Page() {
       key: 'surveyor',
       label: 'Nhân sự thực hiện',
       render: (row) =>
-        row.surveyorName ? (
+        row.plan?.assigneeName ? (
           <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
             <User className="h-3.5 w-3.5 text-slate-400" />
-            {row.surveyorName}
-            <span className="text-xs font-normal text-slate-400">(Leader)</span>
+            {row.plan.assigneeName}
           </span>
         ) : (
           <span className="text-sm italic text-slate-400">Chưa phân công</span>
         ),
-    },
-    {
-      key: 'progress',
-      label: 'Tiến trình',
-      render: (row) => {
-        const pct = mockProgressPct(row);
-        const state = computeRowState(row);
-        const barColor = progressBarColor(state);
-        return (
-          <div className="flex w-28 items-center gap-2" title="Dữ liệu minh họa">
-            <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
-              <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
-            </div>
-          </div>
-        );
-      },
     },
     {
       key: 'status',
@@ -236,9 +190,7 @@ export default function Page() {
       className: 'whitespace-nowrap',
       render: (row) => {
         const state = computeRowState(row);
-        if (state === 'submitted') return <Badge variant="success">Đã nộp</Badge>;
-        if (state === 'overdue') return <Badge variant="error">Quá hạn</Badge>;
-        return <Badge variant="warning">Chờ nộp</Badge>;
+        return state === 'submitted' ? <Badge variant="success">Đã nộp</Badge> : <Badge variant="warning">Chờ nộp</Badge>;
       },
     },
     {
@@ -291,18 +243,23 @@ export default function Page() {
             <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} options={STATUS_FILTER_OPTIONS} />
           </div>
         </div>
+        <p className="mt-3 text-xs italic text-slate-400">
+          Đã tải từ {ordersLoaded}/{ordersTotalCount ?? '…'} đơn hàng.
+        </p>
       </motion.div>
 
       <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
         <div className="overflow-x-auto">
-          <Table
-            columns={columns}
-            rows={filteredRows}
-            rowKey={(row) => row.task.workTaskId}
-            isLoading={isLoading}
-            emptyText="Không có khảo sát nào phù hợp."
-          />
+          <Table columns={columns} rows={filteredRows} rowKey={(row) => row.orderId} isLoading={isInitialLoading} emptyText="Không có khảo sát nào phù hợp." />
         </div>
+
+        {hasMoreOrders && (
+          <div className="mt-4 flex justify-center">
+            <Button variant="secondary" onClick={handleLoadMore} isLoading={isLoadingMore}>
+              Tải thêm đơn hàng ({ordersLoaded}/{ordersTotalCount})
+            </Button>
+          </div>
+        )}
       </div>
 
       <SurveyReportDrawer row={activeRow} onClose={() => setActiveRow(null)} />

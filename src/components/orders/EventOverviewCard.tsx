@@ -26,7 +26,7 @@ export default function EventOverviewCard({
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           <div>
             <p className="text-xs font-bold uppercase text-slate-400">Địa điểm</p>
-            <p className="text-sm font-semibold text-slate-900">{order.eventLocation}</p>
+            <p className="text-sm font-semibold text-slate-900">{order.location}</p>
           </div>
           <div>
             <p className="text-xs font-bold uppercase text-slate-400">Ngày tổ chức</p>

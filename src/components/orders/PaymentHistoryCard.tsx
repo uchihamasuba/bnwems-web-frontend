@@ -4,50 +4,46 @@ import { Button } from '@/components/ui/Button';
 import { Badge, getStatusBadgeVariant } from '@/components/ui/Badge';
 import { formatCurrency } from '@/utils/formatCurrency';
 import { formatDate } from '@/utils/formatDate';
-import type { Payment } from '@/types/payment';
+import type { Deposit } from '@/types/payment';
 
-const METHOD_LABEL: Record<Payment['method'], string> = {
-  cash: 'Tiền mặt',
-  bank_transfer: 'Chuyển khoản',
-};
-
-const STATUS_LABEL: Record<Payment['status'], string> = {
-  pending: 'Chờ xử lý',
-  success: 'Đã xác nhận',
-  failed: 'Thất bại',
+const STATUS_LABEL: Record<Deposit['status'], string> = {
+  PENDING: 'Chờ xử lý',
+  SUCCESS: 'Đã xác nhận',
+  OVERDUE: 'Quá hạn',
+  CANCELLED: 'Đã hủy',
 };
 
 interface PaymentHistoryCardProps {
-  payments: Payment[];
+  deposits: Deposit[];
   totalDue: number;
   isLoading: boolean;
   onOpenRequestPayment: () => void;
 }
 
 export default function PaymentHistoryCard({
-  payments,
+  deposits,
   totalDue,
   isLoading,
   onOpenRequestPayment,
 }: Readonly<PaymentHistoryCardProps>) {
-  const totalCollected = payments.filter((p) => p.status === 'success').reduce((sum, p) => sum + Number(p.amount), 0);
+  const totalCollected = deposits.filter((d) => d.status === 'SUCCESS').reduce((sum, d) => sum + Number(d.amount), 0);
   const progressPercent = totalDue > 0 ? Math.min(100, Math.round((totalCollected / totalDue) * 100)) : 0;
 
-  const columns: TableColumn<Payment>[] = [
+  const columns: TableColumn<Deposit>[] = [
     { key: 'amount', label: 'Số tiền', render: (row) => <span className="font-bold text-slate-900">{formatCurrency(row.amount)}</span> },
-    { key: 'method', label: 'Phương thức', render: (row) => METHOD_LABEL[row.method] ?? row.method },
-    { key: 'paidAt', label: 'Ngày', render: (row) => (row.paidAt ? formatDate(row.paidAt) : '—') },
+    { key: 'paymentMethod', label: 'Phương thức', render: (row) => row.paymentMethod ?? '—' },
+    { key: 'paymentDate', label: 'Ngày', render: (row) => (row.paymentDate ? formatDate(row.paymentDate) : '—') },
     {
       key: 'status',
       label: 'Trạng thái',
-      render: (row) => <Badge variant={getStatusBadgeVariant(row.status.toUpperCase())}>{STATUS_LABEL[row.status] ?? row.status}</Badge>,
+      render: (row) => <Badge variant={getStatusBadgeVariant(row.status)}>{STATUS_LABEL[row.status] ?? row.status}</Badge>,
     },
   ];
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="mb-6 flex items-center justify-between">
-        <h3 className="text-lg font-bold text-slate-900">Lịch sử thanh toán</h3>
+        <h3 className="text-lg font-bold text-slate-900">Lịch sử tiền cọc</h3>
         <div className="flex items-center gap-4">
           <div className="text-right">
             <p className="text-xs font-bold uppercase text-slate-400">Đã thu / Tổng</p>
@@ -62,12 +58,12 @@ export default function PaymentHistoryCard({
       </div>
 
       <div className="mb-6">
-        <Table columns={columns} rows={payments} rowKey={(row) => row.paymentId} isLoading={isLoading} emptyText="Chưa có thanh toán nào" />
+        <Table columns={columns} rows={deposits} rowKey={(row) => row.depositId} isLoading={isLoading} emptyText="Chưa có tiền cọc nào" />
       </div>
 
       <Button onClick={onOpenRequestPayment}>
         <Plus className="h-4 w-4" />
-        Tạo yêu cầu thanh toán mới
+        Ghi nhận tiền cọc mới
       </Button>
     </div>
   );

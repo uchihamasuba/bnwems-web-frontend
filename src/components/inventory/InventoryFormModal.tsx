@@ -5,50 +5,35 @@ import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
-import type { CatalogItem } from '@/types/catalog';
+import type { Item } from '@/types/catalog';
 import type { InventoryRow } from '@/types/inventory';
 
 export interface InventoryFormValues {
-  warehouseId: string;
-  catalogItemId: string;
-  availableQuantity: number;
-  reservedQuantity: number;
-  checkedOutQuantity: number;
-  damagedQuantity: number;
-  lostQuantity: number;
+  itemId: string;
+  quantityChange: number;
+  notes: string;
 }
 
 interface InventoryFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  mode: 'create' | 'edit';
   row?: InventoryRow | null;
-  catalogItems: CatalogItem[];
+  items: Item[];
   isSubmitting: boolean;
   errorMessage?: string;
   onSubmit: (values: InventoryFormValues) => void;
 }
 
 const EMPTY_VALUES: InventoryFormValues = {
-  warehouseId: '',
-  catalogItemId: '',
-  availableQuantity: 0,
-  reservedQuantity: 0,
-  checkedOutQuantity: 0,
-  damagedQuantity: 0,
-  lostQuantity: 0,
+  itemId: '',
+  quantityChange: 0,
+  notes: '',
 };
 
-export function InventoryFormModal({
-  isOpen,
-  onClose,
-  mode,
-  row,
-  catalogItems,
-  isSubmitting,
-  errorMessage,
-  onSubmit,
-}: Readonly<InventoryFormModalProps>) {
+// Mỗi Item luôn có sẵn đúng 1 bản ghi Inventory (tạo tự động khi createCatalogItem) — không có
+// khái niệm "thêm mới tồn kho" ở backend, chỉ có POST /inventory/adjust (điều chỉnh delta số
+// lượng). Modal này luôn là "điều chỉnh", không tách create/edit như trước.
+export function InventoryFormModal({ isOpen, onClose, row, items, isSubmitting, errorMessage, onSubmit }: Readonly<InventoryFormModalProps>) {
   const [values, setValues] = useState<InventoryFormValues>(EMPTY_VALUES);
   const [validationError, setValidationError] = useState('');
   const [wasOpen, setWasOpen] = useState(isOpen);
@@ -57,37 +42,18 @@ export function InventoryFormModal({
     setWasOpen(isOpen);
     if (isOpen) {
       setValidationError('');
-      setValues(
-        mode === 'edit' && row
-          ? {
-              warehouseId: row.warehouseId,
-              catalogItemId: row.catalogItemId,
-              availableQuantity: row.availableQuantity,
-              reservedQuantity: row.reservedQuantity,
-              checkedOutQuantity: row.checkedOutQuantity,
-              damagedQuantity: row.damagedQuantity,
-              lostQuantity: row.lostQuantity,
-            }
-          : EMPTY_VALUES
-      );
+      setValues(row ? { itemId: row.itemId, quantityChange: 0, notes: '' } : EMPTY_VALUES);
     }
   }
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (mode === 'create' && (!values.warehouseId.trim() || !values.catalogItemId)) {
-      setValidationError('Vui lòng nhập mã kho và chọn thiết bị');
+    if (!values.itemId) {
+      setValidationError('Vui lòng chọn thiết bị');
       return;
     }
-    const quantities = [
-      values.availableQuantity,
-      values.reservedQuantity,
-      values.checkedOutQuantity,
-      values.damagedQuantity,
-      values.lostQuantity,
-    ];
-    if (quantities.some((quantity) => quantity < 0)) {
-      setValidationError('Số lượng không được âm');
+    if (values.quantityChange === 0) {
+      setValidationError('Vui lòng nhập số lượng điều chỉnh khác 0');
       return;
     }
     setValidationError('');
@@ -100,76 +66,32 @@ export function InventoryFormModal({
         Hủy
       </Button>
       <Button type="submit" form="inventory-form" isLoading={isSubmitting}>
-        {mode === 'create' ? 'Thêm tồn kho' : 'Lưu thay đổi'}
+        Điều chỉnh
       </Button>
     </>
   );
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={mode === 'create' ? 'Thêm bản ghi tồn kho' : 'Sửa tồn kho'}
-      footer={footer}
-    >
+    <Modal isOpen={isOpen} onClose={onClose} title="Điều chỉnh tồn kho" footer={footer}>
       <form id="inventory-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <Input
-          label="Mã kho"
-          required
-          disabled={mode === 'edit'}
-          value={values.warehouseId}
-          onChange={(e) => setValues((v) => ({ ...v, warehouseId: e.target.value }))}
-          helpText={mode === 'create' ? 'Mã kho nội bộ (vd: wh-1)' : 'Không thể đổi kho sau khi tạo'}
-        />
         <Select
           label="Thiết bị"
           required
-          disabled={mode === 'edit'}
-          value={values.catalogItemId}
-          onChange={(e) => setValues((v) => ({ ...v, catalogItemId: e.target.value }))}
-          options={catalogItems.map((item) => ({ value: item.id, label: item.name }))}
+          disabled={Boolean(row)}
+          value={values.itemId}
+          onChange={(e) => setValues((v) => ({ ...v, itemId: e.target.value }))}
+          options={items.map((item) => ({ value: item.itemId, label: item.itemName }))}
           placeholder="Chọn thiết bị"
         />
         <Input
-          label="Có sẵn"
+          label="Số lượng điều chỉnh (có thể âm)"
           type="number"
-          min={0}
           required
-          value={values.availableQuantity}
-          onChange={(e) => setValues((v) => ({ ...v, availableQuantity: Number(e.target.value) }))}
+          value={values.quantityChange}
+          onChange={(e) => setValues((v) => ({ ...v, quantityChange: Number(e.target.value) }))}
+          helpText="Số dương = nhập thêm vào kho, số âm = giảm khỏi kho"
         />
-        {mode === 'edit' && (
-          <>
-            <Input
-              label="Đã giữ chỗ"
-              type="number"
-              min={0}
-              value={values.reservedQuantity}
-              onChange={(e) => setValues((v) => ({ ...v, reservedQuantity: Number(e.target.value) }))}
-            />
-            <Input
-              label="Đang sử dụng"
-              type="number"
-              min={0}
-              value={values.checkedOutQuantity}
-              onChange={(e) => setValues((v) => ({ ...v, checkedOutQuantity: Number(e.target.value) }))}
-            />
-            <Input
-              label="Hỏng"
-              type="number"
-              min={0}
-              value={values.damagedQuantity}
-              onChange={(e) => setValues((v) => ({ ...v, damagedQuantity: Number(e.target.value) }))}
-            />
-            <Input
-              label="Mất"
-              type="number"
-              min={0}
-              value={values.lostQuantity}
-              onChange={(e) => setValues((v) => ({ ...v, lostQuantity: Number(e.target.value) }))}
-            />
-          </>
-        )}
+        <Input label="Ghi chú" value={values.notes} onChange={(e) => setValues((v) => ({ ...v, notes: e.target.value }))} />
 
         {(validationError || errorMessage) && (
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 ring-1 ring-inset ring-red-600/20">

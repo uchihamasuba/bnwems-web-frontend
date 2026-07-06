@@ -15,9 +15,9 @@ interface DeleteQuotationModalProps {
   onSuccess: () => void;
 }
 
-// Quy tắc nghiệp vụ (CLAUDE.md — Xóa draft): Quotation chỉ xóa được khi còn ở trạng thái draft
-// (docs/api/08-quotations.md: DELETE /quotations/:id chỉ xóa được khi chưa ACCEPTED). Backend là nơi
-// enforce rule này (trả 409 nếu không còn draft) — modal chỉ được mở từ nút đã ẩn theo status !== 'draft'.
+// Quy tắc nghiệp vụ (CLAUDE.md — Xóa draft): Quotation chỉ xóa được khi còn ở trạng thái DRAFT
+// (DELETE /quotations/:id chỉ xóa được khi chưa APPROVED). Backend là nơi enforce rule này (trả 400
+// nếu không còn draft) — modal chỉ được mở từ nút đã ẩn theo status !== 'DRAFT'.
 export default function DeleteQuotationModal({ isOpen, quotation, onClose, onSuccess }: Readonly<DeleteQuotationModalProps>) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -5,48 +5,43 @@ import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
-import type { CatalogCategory, CatalogItem, CatalogItemType } from '@/types/catalog';
+import type { Item, ItemType } from '@/types/catalog';
 
 export interface CatalogItemFormValues {
-  name: string;
+  itemCode: string;
+  itemName: string;
   description: string;
-  itemType: CatalogItemType;
-  basePrice: number;
-  categoryId: string | null;
+  unit: string;
+  rentalPrice: number;
+  typeId: string;
 }
 
 interface CatalogItemFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   mode: 'create' | 'edit';
-  item?: CatalogItem | null;
-  categories: CatalogCategory[];
+  item?: Item | null;
+  types: ItemType[];
   isSubmitting: boolean;
   errorMessage?: string;
   onSubmit: (values: CatalogItemFormValues) => void;
 }
 
 const EMPTY_VALUES: CatalogItemFormValues = {
-  name: '',
+  itemCode: '',
+  itemName: '',
   description: '',
-  itemType: 'EQUIPMENT',
-  basePrice: 0,
-  categoryId: null,
+  unit: 'Cái',
+  rentalPrice: 0,
+  typeId: '',
 };
-
-const ITEM_TYPE_OPTIONS = [
-  { value: 'EQUIPMENT', label: 'Thiết bị' },
-  { value: 'SERVICE', label: 'Dịch vụ' },
-  { value: 'MATERIAL', label: 'Vật tư' },
-  { value: 'PACKAGE', label: 'Gói' },
-];
 
 export function CatalogItemFormModal({
   isOpen,
   onClose,
   mode,
   item,
-  categories,
+  types,
   isSubmitting,
   errorMessage,
   onSubmit,
@@ -62,21 +57,26 @@ export function CatalogItemFormModal({
       setValues(
         mode === 'edit' && item
           ? {
-              name: item.name,
+              itemCode: item.itemCode,
+              itemName: item.itemName,
               description: item.description ?? '',
-              itemType: item.itemType,
-              basePrice: item.basePrice,
-              categoryId: item.categoryId,
+              unit: item.unit,
+              rentalPrice: item.rentalPrice,
+              typeId: item.typeId,
             }
-          : EMPTY_VALUES
+          : EMPTY_VALUES,
       );
     }
   }
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (values.basePrice <= 0) {
-      setValidationError('Đơn giá phải lớn hơn 0');
+    if (values.rentalPrice <= 0) {
+      setValidationError('Đơn giá thuê phải lớn hơn 0');
+      return;
+    }
+    if (!values.typeId) {
+      setValidationError('Vui lòng chọn loại thiết bị');
       return;
     }
     setValidationError('');
@@ -95,46 +95,43 @@ export function CatalogItemFormModal({
   );
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={mode === 'create' ? 'Tạo thiết bị mới' : 'Chỉnh sửa thiết bị'}
-      footer={footer}
-    >
+    <Modal isOpen={isOpen} onClose={onClose} title={mode === 'create' ? 'Tạo thiết bị mới' : 'Chỉnh sửa thiết bị'} footer={footer}>
       <form id="catalog-item-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Input
+          label="Mã thiết bị"
+          required
+          disabled={mode === 'edit'}
+          value={values.itemCode}
+          onChange={(e) => setValues((v) => ({ ...v, itemCode: e.target.value }))}
+          helpText={mode === 'edit' ? 'Không thể đổi mã sau khi tạo' : undefined}
+        />
         <Input
           label="Tên thiết bị"
           required
-          value={values.name}
-          onChange={(e) => setValues((v) => ({ ...v, name: e.target.value }))}
+          value={values.itemName}
+          onChange={(e) => setValues((v) => ({ ...v, itemName: e.target.value }))}
         />
         <Select
-          label="Loại"
+          label="Loại thiết bị"
           required
-          disabled={mode === 'edit'}
-          value={values.itemType}
-          onChange={(e) => setValues((v) => ({ ...v, itemType: e.target.value as CatalogItemType }))}
-          options={ITEM_TYPE_OPTIONS}
-          helpText={mode === 'edit' ? 'Không thể đổi loại sau khi tạo' : undefined}
+          value={values.typeId}
+          onChange={(e) => setValues((v) => ({ ...v, typeId: e.target.value }))}
+          options={types.map((t) => ({ value: t.typeId, label: t.categoryName ? `${t.categoryName} — ${t.typeName}` : t.typeName }))}
+          placeholder="-- Chọn loại thiết bị --"
         />
+        <Input label="Đơn vị tính" required value={values.unit} onChange={(e) => setValues((v) => ({ ...v, unit: e.target.value }))} />
         <Input
           label="Mô tả"
           value={values.description}
           onChange={(e) => setValues((v) => ({ ...v, description: e.target.value }))}
         />
         <Input
-          label="Đơn giá"
+          label="Đơn giá thuê"
           type="number"
           min={0}
           required
-          value={values.basePrice}
-          onChange={(e) => setValues((v) => ({ ...v, basePrice: Number(e.target.value) }))}
-        />
-        <Select
-          label="Danh mục"
-          value={values.categoryId ?? ''}
-          onChange={(e) => setValues((v) => ({ ...v, categoryId: e.target.value || null }))}
-          options={[{ value: '', label: 'Không có danh mục' }, ...categories.map((c) => ({ value: c.id, label: c.name }))]}
+          value={values.rentalPrice}
+          onChange={(e) => setValues((v) => ({ ...v, rentalPrice: Number(e.target.value) }))}
         />
 
         {(validationError || errorMessage) && (

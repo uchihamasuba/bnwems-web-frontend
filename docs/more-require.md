@@ -669,8 +669,6 @@ theo dõi tồn kho) hay là dữ liệu trùng lặp còn sót lại từ đợ
 
 ## (bb) `WorkTask` không khớp `docs/api/10-survey-assignment.md` — không có cột thời gian; lịch dự kiến thật nằm ở model `Schedule` riêng nhưng `GET /schedules` chưa triển khai (501)
 
-> **CẬP NHẬT (đã triển khai):** Backend đã implement `GET /api/v1/schedules` — controller wrap `taskService.getTasks()` và map sang shape `{ id, orderId, activityType, scheduledStart, scheduledEnd, location, status, createdAt }`, trong đó `scheduledStart/End` lấy từ `WorkTask.description` JSON (nếu có từ `createTask`) hoặc fallback về `createdAt/updatedAt`. Frontend đã cập nhật: `src/types/schedulePlan.ts`, `src/services/schedulePlan.service.ts`, `CalendarView`, `WeekView`, `ScheduleTimeline`, `dashboard/page.tsx`, `schedule/plans/page.tsx` — tất cả đã dùng `Schedule[]` thay `WorkTask[]` và nhóm theo `scheduledStart` thật.
-
 Phát hiện khi build trang "Khảo sát" (`/manager/survey`) và chuẩn bị build "Lịch trình"
 (`/manager/schedule/plans`, `/manager/schedule/tasks`) — 2 trang trước đó chỉ là placeholder rỗng.
 Đối chiếu `types/workTask.ts` (đã có sẵn trong repo, dùng cho `ScheduleTimeline.tsx` ở Dashboard và
@@ -763,8 +761,6 @@ vào cột `title` (mô tả tự do) thay vì cột phân loại thật `taskCa
 
 ## (cc) `GET /api/v1/users` chỉ cho phép role `ADMIN` — Manager không tự tra được danh sách Leader/Technical Staff để phân công
 
-> **CẬP NHẬT (đã triển khai):** Backend đã sửa `user.route.ts` — `GET /` hiện cho phép cả `ADMIN` và `MANAGER`. Frontend không cần thay đổi gì thêm vì `userApiService.getUsers()` đã gọi đúng endpoint.
-
 Phát hiện khi build tính năng "Phân công nhân sự" ở trang Kanban "Giao việc cho nhân sự"
 (`/manager/schedule/tasks`, dùng lại đúng pattern `AssignStaffModal.tsx` đã có sẵn ở tab "Khảo sát &
 Nhân sự" của chi tiết đơn hàng). `user.route.ts`:
@@ -789,3 +785,95 @@ biên.
 TECHNICAL_STAFF` để không lộ toàn bộ danh sách tài khoản/Admin khác), hoặc bổ sung endpoint riêng nhẹ
 hơn (vd `GET /api/v1/staff` chỉ trả `{ id, fullName, username, role }` của Leader/Technical Staff) mà
 Manager được phép gọi.
+
+---
+
+# Đợt tái cấu trúc backend toàn diện — 2026-07-06 (commit "refactor: change the api contract and
+# schema to match with new database seed")
+
+**Toàn bộ các mục (a)–(cc) ở trên mô tả kiến trúc backend TRƯỚC đợt refactor này — không còn phản
+ánh đúng hệ thống hiện tại.** Backend đã đổi mô hình dữ liệu sâu tới mức nhiều model bị xóa hẳn khỏi
+`prisma/schema.prisma` (không phải thiếu, mà không còn tồn tại): `DamageLossItem`/`DamageLossReport`,
+`ChangeRequest`/`ChangeRequestItem`, `Assignment`, `Equipment` (gộp vào `Item`), `OrderStatusHistory`,
+`Payment`/`PaymentRequest` (tách thành `Deposit` + `Settlement` riêng), `Schedule` (cũ, khác
+`SchedulePlan` mới). Đồng thời có model/route hoàn toàn mới: `OrderWarning`, `Deposit`, `Settlement`
+(tách khỏi Deposit), `SchedulePlan` (1 plan = 1 người, thay `Schedule`+`Assignment` cũ), `WageRecord`,
+`BusinessPolicy`, `ItemTypeSpec` (BOM), `CollectedEquipmentReport` (thay `DamageLossItem`, field khác
+hẳn — `goodQuantity/damagedQuantity/lostQuantity`, không có `responsibleParty/compensationAmount`).
+
+Toàn bộ frontend (`types/`, `services/`, component/page liên quan) đã được cập nhật lại theo đúng
+source backend thật (đọc trực tiếp `D:\bnwems-backend-api` routes/controllers/services/validators/
+`prisma/schema.prisma`, không suy diễn từ `docs/api/` — các file `docs/api/*.md` đã được đánh dấu
+STALE ở đầu mỗi file). Dưới đây là các gap/gợi ý còn tồn đọng phát hiện trong đợt cập nhật này.
+
+## (dd) Nhiều endpoint là stub rỗng — route tồn tại nhưng chưa implement logic thật
+
+- `PUT /api/v1/orders/:id/prepare`, `POST /api/v1/orders/:id/checkout` (dùng `inventoryController`)
+  — không có logic thật nào, gọi vẫn trả 200 nhưng không trừ/khóa tồn kho gì cả.
+- `GET /api/v1/notifications` luôn trả `data: []`; `PUT .../read-all`, `PUT .../:id/read` không cập
+  nhật `NotificationRecipient` dù model đã có sẵn trong schema.
+- `POST /api/v1/auth/forgot-password` không gửi email thật, luôn trả message chung chung.
+- `GET /api/v1/reports/revenue` → `breakdownByMonth`/`topCustomers` luôn `[]`. `GET
+  /api/v1/reports/inventory` → `mostUsedItems` luôn `[]`, và KHÔNG lọc theo `startDate`/`endDate` dù
+  nhận query (tính tổng toàn hệ thống mọi lúc).
+- `GET /api/v1/reports/verification` → `warningsResolved`/`damageLossRecorded` hardcode `true`, chưa
+  thật sự kiểm tra.
+- `POST /api/v1/upload/image` (upload.route.ts) khai báo nhưng KHÔNG được mount ở
+  `src/routes/index.ts` — gọi sẽ 404. Không dùng endpoint này (avatar dùng
+  `POST /users/:id/avatar` hoặc `POST /evidence/upload` thay thế).
+
+Đề xuất: implement logic thật cho các endpoint trên theo đúng ý định UC gốc, đặc biệt
+`prepare`/`checkout` (khóa/trừ tồn kho) vì đây là luồng nghiệp vụ lõi (UC 2.13/2.23).
+
+## (ee) Domain hoàn toàn mới — có API thật nhưng web chưa có UI
+
+- **OrderWarning** (`GET/POST /orders/:id/warnings`, `PUT /warnings/:id/resolve`) — đã có
+  `types/orderWarning.ts` + `services/orderWarning.service.ts`, nhưng chưa có UI hiển thị/tạo cảnh
+  báo trên trang chi tiết đơn hàng.
+- **Attendance** (`POST /attendance/check-in`, `PUT /attendance/:id/check-out`) — đã có
+  `types/attendance.ts` + `services/attendance.service.ts`, nhưng chấm công là hành động của Leader/
+  Technical Staff qua mobile, web chỉ cần xem lại (chưa có UI xem).
+- **ItemTypeSpec/BOM** (`GET/POST /catalog/types/:id/specs`) — cấu hình linh kiện con của 1 loại
+  thiết bị, đã có type trong `types/catalog.ts` nhưng service/UI quản lý chưa được xây.
+- **Deposit/Settlement** đã nối API thật đầy đủ ở tab "Thanh toán & Quyết toán" của đơn hàng, nhưng
+  chưa có trang tổng hợp riêng cho Settlement (chỉ có `/manager/payments/deposits`).
+
+## (ff) ChangeRequest — quyết định giữ UI + chuyển sang mock rõ ràng
+
+Model `ChangeRequest`/`ChangeRequestItem` đã bị xóa hẳn khỏi backend (0 kết quả grep
+"ChangeRequest" trong toàn bộ `D:\bnwems-backend-api\src`) — không còn route/controller/service/model
+nào tương ứng. Theo quyết định của người dùng (2026-07-06): **giữ nguyên UI** ("Yêu cầu thay đổi từ
+hiện trường" trong tab Khảo sát & Nhân sự, widget "Yêu cầu chờ xử lý" ở dashboard Manager) nhưng
+`services/changeRequest.service.ts` đã chuyển hẳn sang gọi route handler mock same-origin của chính
+app (`src/app/api/v1/change-requests/**`, dữ liệu từ `src/mocks/seed.ts` → `mockChangeRequests`) thay
+vì gọi backend thật (sẽ 404). UI đã gắn nhãn "(Dữ liệu minh họa)" in nghiêng tại
+`FieldChangeRequestCard.tsx` và `ApprovalCard.tsx` để phân biệt rõ với dữ liệu thật.
+
+Đề xuất cho backend: hoặc khôi phục lại model/API cho ChangeRequest, hoặc xác nhận chính thức thay
+thế bằng `PUT /api/v1/orders/:id/items` (lưu ý: API này thay TOÀN BỘ danh sách item của order, không
+có khái niệm request/duyệt/từ chối riêng như ChangeRequest cũ — nếu chọn hướng này, `items` gửi lên
+sẽ do Manager tự đối chiếu và không có audit trail per-change).
+
+## (gg) `docs/api/*.md` toàn bộ đã lỗi thời — cần viết lại từ đầu
+
+Đã thêm banner "⚠️ STALE" ở đầu mỗi file trong `docs/api/` (bao gồm `README.md`) trỏ người đọc quay
+lại đối chiếu trực tiếp `D:\bnwems-backend-api` hoặc file `more-require.md` này. **Không có đủ thời
+gian viết lại toàn bộ 14 file module trong đợt này** — khi có dịp, nên viết lại theo đúng response
+thật đã xác nhận (routes/controllers/services/validators), ưu tiên theo mức độ lệch nhiều nhất:
+`09-orders.md`, `11-payments-settlement.md` (nay là Deposit+Settlement tách riêng),
+`10-survey-assignment.md` (nay là WorkTask tĩnh + SchedulePlan), `03-catalog.md` (nay là 3 tầng
+Category→Type→Item), `04-suppliers.md`, `05-warehouse-inventory.md` (không còn nhiều kho),
+`02-users-roles.md`, `07-customers.md` (field `customerName` không phải `fullName`),
+`08-quotations.md` (Quotation nay thuộc Customer, không thuộc Order).
+
+## (hh) Mock backend layer (`src/app/api/v1/**` + `src/mocks/seed.ts`) — đã dọn phần lớn
+
+Dự án có sẵn 1 lớp "mock backend" bằng Next.js route handlers (dùng trước khi có backend thật) tại
+`src/app/api/v1/**`. Sau đợt đồng bộ này, toàn bộ service thật đã gọi thẳng backend qua `api` (axios,
+`NEXT_PUBLIC_API_BASE_URL`) nên các route mock không còn được gọi ở đâu nữa — đã xóa (auth,
+catalog-categories, catalog-items, customers, dashboard, inventory, orders, quotations, reports,
+supplier-transactions, suppliers, tasks, users, warehouse, warehouse-histories, warehouses), **chỉ
+giữ lại `change-requests/**`** (đang dùng làm mock có chủ đích cho ChangeRequest — xem mục (ff)).
+`src/mocks/seed.ts` vẫn còn phần lớn nội dung cũ (dead code, không gây lỗi build) — chỉ
+`mockChangeRequests` (+ store liên quan) còn được dùng thật; phần còn lại có thể dọn tiếp khi có dịp.
+

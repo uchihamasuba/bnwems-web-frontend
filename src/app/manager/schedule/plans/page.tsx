@@ -2,12 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Search, RefreshCw, Calendar, List, Layers, Pencil, Trash2 } from 'lucide-react';
-import { workTaskApiService } from '@/services/workTask.service';
+import { Plus, Search, RefreshCw, Calendar, List, Layers, Pencil, Ban } from 'lucide-react';
 import { schedulePlanApiService } from '@/services/schedulePlan.service';
 import { orderApiService } from '@/services/order.service';
 import { customerApiService } from '@/services/customer.service';
-import { assignmentApiService } from '@/services/assignment.service';
 import { Table, TableColumn } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { Select } from '@/components/ui/Select';
@@ -16,37 +14,26 @@ import WeekView from '@/components/schedule/WeekView';
 import TaskKanbanBoard from '@/components/schedule/TaskKanbanBoard';
 import CreateTaskModal from '@/components/schedule/CreateTaskModal';
 import EditTaskModal from '@/components/schedule/EditTaskModal';
-import { TASK_CATEGORY_LABEL, TASK_STATUS_LABEL } from '@/constants/work-task';
+import { SCHEDULE_STATUS_LABEL } from '@/constants/work-task';
 import { formatDate, formatTime } from '@/utils/formatDate';
-import type { WorkTask } from '@/types/workTask';
-import type { Schedule } from '@/types/schedulePlan';
+import type { SchedulePlan, ScheduleStatus } from '@/types/schedulePlan';
 import type { Order } from '@/types/order';
 import type { Customer } from '@/types/customer';
-import type { OrderAssignments } from '@/types/assignment';
 
 type SubTab = 'calendar' | 'plans' | 'tasks';
 type CalendarMode = 'month' | 'week' | 'day';
 
 async function loadScheduleData() {
-  const [tasksRes, ordersRes, customersRes, schedulesRes] = await Promise.all([
-    workTaskApiService.getTasks({ limit: 200 }),
+  const [ordersRes, customersRes, plansRes] = await Promise.all([
     orderApiService.getOrders({ limit: 200 }),
     customerApiService.getCustomers({ limit: 200 }),
-    schedulePlanApiService.getSchedules({ limit: 200 }),
+    schedulePlanApiService.getSchedulePlans({ limit: 200 }),
   ]);
   return {
-    tasks: (tasksRes.data ?? []) as WorkTask[],
     orders: (ordersRes.data ?? []) as Order[],
     customers: (customersRes.data ?? []) as Customer[],
-    schedules: schedulesRes.data ?? [],
+    plans: (plansRes.data ?? []) as SchedulePlan[],
   };
-}
-
-async function fetchAssignment(orderId: string): Promise<[string, OrderAssignments | null]> {
-  return assignmentApiService
-    .getOrderAssignments(orderId)
-    .then((res) => [orderId, res.data] as const)
-    .catch(() => [orderId, null] as const);
 }
 
 function calendarModeLabel(mode: CalendarMode): string {
@@ -60,8 +47,8 @@ function isSameDay(a: Date, b: Date): boolean {
 }
 
 function statusBadgeVariant(status: string): 'success' | 'info' | 'neutral' {
-  if (status === 'done') return 'success';
-  if (status === 'in_progress') return 'info';
+  if (status === 'COMPLETED') return 'success';
+  if (status === 'IN_PROGRESS') return 'info';
   return 'neutral';
 }
 
@@ -75,31 +62,25 @@ export default function Page() {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('calendar');
   const [calendarMode, setCalendarMode] = useState<CalendarMode>('month');
 
-  const [tasks, setTasks] = useState<WorkTask[]>([]);
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [plans, setPlans] = useState<SchedulePlan[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [assignmentByOrderId, setAssignmentByOrderId] = useState<Map<string, OrderAssignments | null>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState<WorkTask | null>(null);
+  const [editingPlan, setEditingPlan] = useState<SchedulePlan | null>(null);
 
   const [viewDate, setViewDate] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<ScheduleStatus | ''>('');
 
   const refresh = () =>
-    loadScheduleData().then(async ({ tasks: t, orders: o, customers: c, schedules: sc }) => {
-      setTasks(t);
+    loadScheduleData().then(({ orders: o, customers: c, plans: p }) => {
       setOrders(o);
       setCustomers(c);
-      setSchedules(sc);
-      const uniqueOrderIds = [...new Set(t.map((task) => task.orderId))];
-      const entries = await Promise.all(uniqueOrderIds.map(fetchAssignment));
-      setAssignmentByOrderId(new Map(entries));
+      setPlans(p);
     });
 
   useEffect(() => {
@@ -120,126 +101,115 @@ export default function Page() {
     setSelectedDate(now);
   };
 
-  const schedulesOnSelectedDate = schedules.filter((s) => isSameDay(new Date(s.scheduledStart), selectedDate));
+  const plansOnSelectedDate = plans.filter((p) => isSameDay(new Date(p.startTime), selectedDate));
 
-  const filteredTasks = useMemo(() => {
+  const filteredPlans = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
-    return tasks
-      .filter((t) => {
-        if (categoryFilter && t.taskCategory !== categoryFilter) return false;
-        if (statusFilter && t.status !== statusFilter) return false;
+    return plans
+      .filter((p) => {
+        const isSurvey = p.taskName?.toLowerCase().includes('khảo sát') ?? false;
+        if (categoryFilter === 'survey' && !isSurvey) return false;
+        if (categoryFilter === 'operation' && isSurvey) return false;
+        if (statusFilter && p.status !== statusFilter) return false;
         if (!term) return true;
-        const order = orderById.get(t.orderId);
-        const customerName = order ? (customerById.get(order.customerId)?.fullName ?? '') : '';
-        return t.orderId.toLowerCase().includes(term) || t.title.toLowerCase().includes(term) || customerName.toLowerCase().includes(term);
+        const order = orderById.get(p.orderId);
+        const customerName = order ? (customerById.get(order.customerId)?.customerName ?? '') : '';
+        return (
+          p.orderId.toLowerCase().includes(term) ||
+          (p.taskName ?? '').toLowerCase().includes(term) ||
+          customerName.toLowerCase().includes(term)
+        );
       })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [tasks, searchTerm, categoryFilter, statusFilter, orderById, customerById]);
+  }, [plans, searchTerm, categoryFilter, statusFilter, orderById, customerById]);
 
-  const filteredSchedules = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    return schedules
-      .filter((s) => {
-        if (categoryFilter === 'survey' && s.activityType !== 'survey') return false;
-        if (categoryFilter === 'operation' && s.activityType === 'survey') return false;
-        if (statusFilter && s.status !== statusFilter) return false;
-        if (!term) return true;
-        const order = orderById.get(s.orderId);
-        const customerName = order ? (customerById.get(order.customerId)?.fullName ?? '') : '';
-        return s.orderId.toLowerCase().includes(term) || s.activityType.toLowerCase().includes(term) || customerName.toLowerCase().includes(term);
-      })
-      .sort((a, b) => new Date(a.scheduledStart).getTime() - new Date(b.scheduledStart).getTime());
-  }, [schedules, searchTerm, categoryFilter, statusFilter, orderById, customerById]);
-
-  const handleDeletePlan = async (task: WorkTask) => {
-    if (task.status !== 'draft') return;
-    if (!confirm(`Xóa kế hoạch "${task.title}" khỏi hệ thống?`)) return;
-    await workTaskApiService.cancelTask(task.workTaskId, 'deleted');
+  const handleCancelPlan = async (plan: SchedulePlan) => {
+    if (plan.status !== 'PENDING') return;
+    if (!confirm(`Hủy kế hoạch "${plan.taskName ?? plan.planCode}"?`)) return;
+    await schedulePlanApiService.updateSchedulePlanStatus(plan.planId, { status: 'CANCELLED' });
     await refresh();
   };
 
-  const planColumns: TableColumn<WorkTask>[] = [
+  const planColumns: TableColumn<SchedulePlan>[] = [
     {
-      key: 'workTaskId',
+      key: 'planCode',
       label: 'Mã lịch',
-      render: (task) => <span className="font-mono text-sm font-semibold text-blue-600">#{task.workTaskId}</span>,
+      render: (plan) => <span className="font-mono text-sm font-semibold text-blue-600">{plan.planCode}</span>,
     },
     {
       key: 'orderId',
       label: 'Hợp đồng',
-      render: (task) => (
-        <Link href={`/manager/orders/${task.orderId}`} className="font-mono text-sm text-blue-600 hover:underline">
-          #{task.orderId}
-        </Link>
-      ),
+      render: (plan) => {
+        const order = orderById.get(plan.orderId);
+        return (
+          <Link href={`/manager/orders/${plan.orderId}`} className="font-mono text-sm text-blue-600 hover:underline">
+            {order?.orderCode ?? `#${plan.orderId}`}
+          </Link>
+        );
+      },
     },
     {
       key: 'customer',
       label: 'Khách hàng',
-      render: (task) => {
-        const order = orderById.get(task.orderId);
+      render: (plan) => {
+        const order = orderById.get(plan.orderId);
         const customer = order ? customerById.get(order.customerId) : undefined;
-        return <span className="font-medium text-slate-700">{customer?.fullName ?? `KH #${order?.customerId ?? '—'}`}</span>;
+        return <span className="font-medium text-slate-700">{customer?.customerName ?? `KH #${order?.customerId ?? '—'}`}</span>;
       },
     },
     {
-      key: 'taskCategory',
-      label: 'Phân loại',
-      render: (task) => <Badge variant={task.taskCategory === 'survey' ? 'info' : 'neutral'}>{TASK_CATEGORY_LABEL[task.taskCategory]}</Badge>,
-    },
-    {
-      key: 'title',
+      key: 'taskName',
       label: 'Công việc',
-      render: (task) => <span className="text-sm text-slate-700">{task.title}</span>,
+      render: (plan) => <span className="text-sm text-slate-700">{plan.taskName ?? `Task #${plan.taskId}`}</span>,
     },
     {
-      key: 'createdAt',
-      label: 'Ngày tạo',
-      render: (task) => (
+      key: 'startTime',
+      label: 'Thời gian',
+      render: (plan) => (
         <span className="whitespace-nowrap text-sm text-slate-500">
-          {formatDate(task.createdAt)} {formatTime(task.createdAt)}
+          {formatDate(plan.startTime)} {formatTime(plan.startTime)}
         </span>
       ),
     },
     {
       key: 'staff',
       label: 'Staff phụ trách',
-      render: (task) => {
-        const assignments = assignmentByOrderId.get(task.orderId);
-        const group = task.taskCategory === 'survey' ? assignments?.survey : assignments?.execution;
-        const name = group?.members[0]?.fullName;
-        return name ? <span className="text-sm text-slate-700">{name}</span> : <span className="text-sm italic text-slate-400">Chưa phân công</span>;
-      },
+      render: (plan) =>
+        plan.assigneeName ? (
+          <span className="text-sm text-slate-700">{plan.assigneeName}</span>
+        ) : (
+          <span className="text-sm italic text-slate-400">Chưa phân công</span>
+        ),
     },
     {
       key: 'status',
       label: 'Trạng thái',
       className: 'whitespace-nowrap',
-      render: (task) => <Badge variant={statusBadgeVariant(task.status)}>{TASK_STATUS_LABEL[task.status]}</Badge>,
+      render: (plan) => <Badge variant={statusBadgeVariant(plan.status)}>{SCHEDULE_STATUS_LABEL[plan.status]}</Badge>,
     },
     {
       key: 'actions',
       label: 'Thao tác',
       className: 'text-right',
-      render: (task) => (
+      render: (plan) => (
         <div className="flex justify-end gap-1">
           <button
             type="button"
-            disabled={task.status !== 'draft'}
-            onClick={() => setEditingTask(task)}
-            title={task.status === 'draft' ? 'Sửa kế hoạch' : 'Chỉ sửa được khi còn nháp'}
+            disabled={plan.status === 'IN_PROGRESS' || plan.status === 'COMPLETED'}
+            onClick={() => setEditingPlan(plan)}
+            title="Sửa kế hoạch"
             className="rounded-md p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
           >
             <Pencil className="h-4 w-4" />
           </button>
           <button
             type="button"
-            disabled={task.status !== 'draft'}
-            onClick={() => handleDeletePlan(task)}
-            title={task.status === 'draft' ? 'Xóa kế hoạch' : 'Chỉ xóa được khi còn nháp'}
+            disabled={plan.status !== 'PENDING'}
+            onClick={() => handleCancelPlan(plan)}
+            title={plan.status === 'PENDING' ? 'Hủy kế hoạch' : 'Chỉ hủy được khi còn chờ xử lý'}
             className="rounded-md p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
           >
-            <Trash2 className="h-4 w-4" />
+            <Ban className="h-4 w-4" />
           </button>
         </div>
       ),
@@ -270,24 +240,14 @@ export default function Page() {
           })}
         </div>
 
-        {activeSubTab === 'plans' && (
+        {(activeSubTab === 'plans' || activeSubTab === 'tasks') && (
           <button
             type="button"
             onClick={() => setIsCreateOpen(true)}
             className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-blue-700"
           >
             <Plus className="h-4 w-4" />
-            Tạo kế hoạch
-          </button>
-        )}
-        {activeSubTab === 'tasks' && (
-          <button
-            type="button"
-            onClick={() => setIsCreateOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-blue-700"
-          >
-            <Plus className="h-4 w-4" />
-            Giao Task mới
+            {activeSubTab === 'plans' ? 'Tạo kế hoạch' : 'Giao Task mới'}
           </button>
         )}
       </div>
@@ -326,7 +286,7 @@ export default function Page() {
                   onAnchorDateChange={setViewDate}
                   selectedDate={selectedDate}
                   onSelectedDateChange={setSelectedDate}
-                  schedules={schedules}
+                  schedules={plans}
                   orderById={orderById}
                   customerById={customerById}
                 />
@@ -353,13 +313,14 @@ export default function Page() {
                     <div className="w-48">
                       <Select
                         value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
+                        onChange={(e) => setStatusFilter(e.target.value as ScheduleStatus | '')}
                         options={[
                           { value: '', label: 'Trạng thái công việc' },
-                          { value: 'draft', label: 'Nháp' },
-                          { value: 'assigned', label: 'Đã giao việc' },
-                          { value: 'in_progress', label: 'Đang thực hiện' },
-                          { value: 'done', label: 'Hoàn thành' },
+                          { value: 'PENDING', label: 'Chờ xử lý' },
+                          { value: 'CONFIRMED', label: 'Đã xác nhận' },
+                          { value: 'IN_PROGRESS', label: 'Đang thực hiện' },
+                          { value: 'COMPLETED', label: 'Hoàn thành' },
+                          { value: 'CANCELLED', label: 'Đã hủy' },
                         ]}
                       />
                     </div>
@@ -376,14 +337,14 @@ export default function Page() {
                   {calendarMode === 'month' ? (
                     <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
                       <div className="lg:col-span-8">
-                        <CalendarView viewDate={viewDate} selectedDate={selectedDate} onViewDateChange={setViewDate} onSelectedDateChange={setSelectedDate} schedules={filteredSchedules} />
+                        <CalendarView viewDate={viewDate} selectedDate={selectedDate} onViewDateChange={setViewDate} onSelectedDateChange={setSelectedDate} schedules={filteredPlans} />
                       </div>
                       <div className="lg:col-span-4">
-                        <DaySidebar selectedDate={selectedDate} schedules={schedulesOnSelectedDate} orderById={orderById} customerById={customerById} />
+                        <DaySidebar selectedDate={selectedDate} schedules={plansOnSelectedDate} orderById={orderById} customerById={customerById} />
                       </div>
                     </div>
                   ) : (
-                    <DaySidebar selectedDate={selectedDate} schedules={schedulesOnSelectedDate} orderById={orderById} customerById={customerById} fullWidth />
+                    <DaySidebar selectedDate={selectedDate} schedules={plansOnSelectedDate} orderById={orderById} customerById={customerById} fullWidth />
                   )}
                 </>
               )}
@@ -394,27 +355,27 @@ export default function Page() {
           {activeSubTab === 'plans' && (
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
               <div className="overflow-x-auto">
-                <Table columns={planColumns} rows={filteredTasks} rowKey={(t) => t.workTaskId} emptyText="Chưa có kế hoạch/công việc nào." />
+                <Table columns={planColumns} rows={filteredPlans} rowKey={(p) => p.planId} emptyText="Chưa có kế hoạch/công việc nào." />
               </div>
             </div>
           )}
 
           {/* SUB TAB 3: KANBAN */}
           {activeSubTab === 'tasks' && (
-            <TaskKanbanBoard tasks={tasks} orderById={orderById} customerById={customerById} onRefresh={refresh} />
+            <TaskKanbanBoard plans={plans} orderById={orderById} customerById={customerById} onRefresh={refresh} />
           )}
         </div>
       )}
 
       <CreateTaskModal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} onCreated={refresh} />
-      <EditTaskModal isOpen={Boolean(editingTask)} task={editingTask} onClose={() => setEditingTask(null)} onUpdated={refresh} />
+      <EditTaskModal isOpen={Boolean(editingPlan)} plan={editingPlan} onClose={() => setEditingPlan(null)} onUpdated={refresh} />
     </div>
   );
 }
 
 interface DaySidebarProps {
   selectedDate: Date;
-  schedules: Schedule[];
+  schedules: SchedulePlan[];
   orderById: Map<string, Order>;
   customerById: Map<string, Customer>;
   fullWidth?: boolean;
@@ -433,17 +394,17 @@ function DaySidebar({ selectedDate, schedules, orderById, customerById, fullWidt
         {schedules.length === 0 ? (
           <p className="py-6 text-center text-sm text-slate-400">Không có lịch trình nào trong ngày này.</p>
         ) : (
-          schedules.map((schedule) => {
-            const order = orderById.get(schedule.orderId);
+          schedules.map((plan) => {
+            const order = orderById.get(plan.orderId);
             const customer = order ? customerById.get(order.customerId) : undefined;
             return (
-              <div key={schedule.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+              <div key={plan.planId} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
                 <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-semibold text-slate-800">{schedule.activityType}</p>
-                  <Badge variant={statusBadgeVariant(schedule.status)}>{TASK_STATUS_LABEL[schedule.status]}</Badge>
+                  <p className="text-sm font-semibold text-slate-800">{plan.taskName ?? `Task #${plan.taskId}`}</p>
+                  <Badge variant={statusBadgeVariant(plan.status)}>{SCHEDULE_STATUS_LABEL[plan.status]}</Badge>
                 </div>
-                <Link href={`/manager/orders/${schedule.orderId}`} className="mt-1 block text-xs font-medium text-blue-600 hover:underline">
-                  #{schedule.orderId} — {customer?.fullName ?? `KH #${order?.customerId ?? '—'}`}
+                <Link href={`/manager/orders/${plan.orderId}`} className="mt-1 block text-xs font-medium text-blue-600 hover:underline">
+                  {order?.orderCode ?? `#${plan.orderId}`} — {customer?.customerName ?? `KH #${order?.customerId ?? '—'}`}
                 </Link>
               </div>
             );

@@ -1,6 +1,12 @@
 // Dữ liệu giả lập dùng cho src/app/api/v1/** — KHÔNG dùng cho production.
 // Theo schema mới trong docs/api/ (đồng bộ lại 2026-06-23 từ repo Trintrin0408/Context,
 // branch feature/fix-api_v1): id dạng string, field camelCase, enum chữ hoa.
+//
+// ⚠️ Sau đợt đồng bộ frontend↔backend 2026-07-06: hầu hết route handler mock từng dùng file này đã
+// bị xóa (services thật đã gọi thẳng backend). Chỉ còn `mockChangeRequests` (+ store liên quan)
+// được dùng thật, bởi src/app/api/v1/change-requests/** (ChangeRequest đã bị xóa khỏi backend thật,
+// giữ mock có chủ đích — xem docs/more-require.md). Phần còn lại trong file này là dead code, có thể
+// xóa dần khi dọn dẹp thêm.
 
 export type UserRole = 'Admin' | 'Manager' | 'LEADER_STAFF' | 'TECHNICAL_STAFF';
 export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'LOCKED';
@@ -863,69 +869,6 @@ export function applyAssignmentMembers(taskId: string, members: MockAssignmentMe
   }
   return false;
 }
-
-// ===== MOCK-ONLY: Settlement preview & breakdown hỏng/mất =====
-// Lý do tồn tại: backend thật KHÔNG có GET cho Settlement (theo id hoặc orderId) và KHÔNG có GET
-// cho danh sách Damage-Loss theo orderId (đọc trực tiếp
-// D:\bnwems-backend-api\src\routes\{settlement,damageloss}.route.ts — chỉ có POST/PUT, không
-// GET). Backend cũng không lưu lại field "responsible" (khách đền bù hay trừ lương nhân viên)
-// khi ghi nhận damage-loss. Dữ liệu dưới đây chỉ phục vụ hiển thị tab "Thanh toán & Quyết toán"
-// cho tới khi backend bổ sung — xem docs/more-require.md mục (a)(b)(c). KHÔNG dùng cho mục đích
-// khác, không mutate qua route handler nào nên không cần globalThis store như các mock khác.
-export interface MockSettlementSurcharge {
-  reason: string;
-  amount: number;
-}
-
-export interface MockSettlementDamageLine {
-  damageLossItemId: string;
-  icon: string;
-  itemName: string;
-  amount: number;
-  responsible: 'customer' | 'staff_wage_deduction';
-  responsibleStaffName?: string;
-}
-
-export interface MockSettlementPreview {
-  orderId: string;
-  originalValue: number;
-  additionalFees: number;
-  discount: number;
-  totalPaid: number;
-  surchargeLines: MockSettlementSurcharge[];
-  damageLines: MockSettlementDamageLine[];
-}
-
-export const mockSettlementPreviews: MockSettlementPreview[] = [
-  {
-    orderId: 'order-2', // order đang in_progress — khớp trạng thái "Đang xử lý" của mockup gốc
-    originalValue: 50_000_000,
-    additionalFees: 2_500_000,
-    discount: 500_000,
-    totalPaid: 25_000_000,
-    surchargeLines: [
-      { reason: 'Gia hạn thời gian (2h)', amount: 1_500_000 },
-      { reason: 'Thêm 5 set teabreak', amount: 1_000_000 },
-    ],
-    damageLines: [
-      {
-        damageLossItemId: 'dmg-1',
-        icon: 'WineOff',
-        itemName: 'Vỡ 3 ly thủy tinh',
-        amount: 450_000,
-        responsible: 'customer',
-      },
-      {
-        damageLossItemId: 'dmg-2',
-        icon: 'Mic',
-        itemName: 'Mất 1 micro không dây',
-        amount: 800_000,
-        responsible: 'staff_wage_deduction',
-        responsibleStaffName: 'Vũ Đình Tú',
-      },
-    ],
-  },
-];
 
 // ===== Supplier & SupplierTransaction (UC 2.16 — docs/api/04-suppliers.md) =====
 export type SupplierStatus = 'active' | 'inactive';

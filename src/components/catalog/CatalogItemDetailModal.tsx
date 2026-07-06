@@ -5,20 +5,18 @@ import { Modal } from '@/components/ui/Modal';
 import { Badge, getStatusBadgeVariant } from '@/components/ui/Badge';
 import { formatDate } from '@/utils/formatDate';
 import { formatCurrency } from '@/utils/formatCurrency';
-import type { CatalogItem } from '@/types/catalog';
+import type { Item } from '@/types/catalog';
 
 interface CatalogItemDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
-  item: CatalogItem | null;
-  categoryName?: string;
+  item: Item | null;
 }
 
-const ITEM_TYPE_LABEL: Record<string, string> = {
-  EQUIPMENT: 'Thiết bị',
-  SERVICE: 'Dịch vụ',
-  MATERIAL: 'Vật tư',
-  PACKAGE: 'Gói',
+const STATUS_LABEL: Record<string, string> = {
+  ACTIVE: 'Đang hoạt động',
+  INACTIVE: 'Ngừng hoạt động',
+  MAINTENANCE: 'Bảo trì',
 };
 
 function DetailRow({ label, value }: Readonly<{ label: string; value: ReactNode }>) {
@@ -30,25 +28,20 @@ function DetailRow({ label, value }: Readonly<{ label: string; value: ReactNode 
   );
 }
 
-export function CatalogItemDetailModal({ isOpen, onClose, item, categoryName }: Readonly<CatalogItemDetailModalProps>) {
+export function CatalogItemDetailModal({ isOpen, onClose, item }: Readonly<CatalogItemDetailModalProps>) {
   if (!item) return null;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Chi tiết thiết bị">
       <div className="flex flex-col">
-        <DetailRow label="Tên thiết bị" value={item.name} />
-        <DetailRow label="Loại" value={ITEM_TYPE_LABEL[item.itemType] ?? item.itemType} />
-        <DetailRow label="Danh mục" value={categoryName ?? '—'} />
+        <DetailRow label="Mã thiết bị" value={item.itemCode} />
+        <DetailRow label="Tên thiết bị" value={item.itemName} />
+        <DetailRow label="Loại" value={item.typeName ?? '—'} />
+        <DetailRow label="Đơn vị tính" value={item.unit} />
         <DetailRow label="Mô tả" value={item.description || '—'} />
-        <DetailRow label="Đơn giá" value={formatCurrency(item.basePrice)} />
-        <DetailRow
-          label="Trạng thái"
-          value={
-            <Badge variant={getStatusBadgeVariant(item.isActive ? 'ACTIVE' : 'INACTIVE')}>
-              {item.isActive ? 'Đang hoạt động' : 'Đã vô hiệu hóa'}
-            </Badge>
-          }
-        />
+        <DetailRow label="Đơn giá thuê" value={formatCurrency(item.rentalPrice)} />
+        <DetailRow label="Tồn kho" value={item.inventory ? `${item.inventory.quantityAvailable}/${item.inventory.quantityTotal}` : '—'} />
+        <DetailRow label="Trạng thái" value={<Badge variant={getStatusBadgeVariant(item.status)}>{STATUS_LABEL[item.status] ?? item.status}</Badge>} />
         <DetailRow label="Ngày tạo" value={formatDate(item.createdAt)} />
       </div>
     </Modal>

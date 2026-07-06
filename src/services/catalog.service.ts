@@ -1,86 +1,132 @@
 import api from './api';
 import type {
-  CreateCatalogCategoryPayload,
-  CreateCatalogItemPayload,
-  UpdateCatalogCategoryPayload,
-  UpdateCatalogCategoryStatusPayload,
-  UpdateCatalogItemPayload,
-  UpdateCatalogItemStatusPayload,
+  CreateItemCategoryPayload,
+  CreateItemPayload,
+  CreateItemTypePayload,
+  UpdateItemCategoryPayload,
+  UpdateItemCategoryStatusPayload,
+  UpdateItemPayload,
+  UpdateItemStatusPayload,
+  UpdateItemTypePayload,
+  UpdateTypeSpecsPayload,
 } from '@/types/catalog';
 
-export interface GetCatalogItemsQuery {
+export interface GetItemsQuery {
   page?: number;
   limit?: number;
   search?: string;
-  itemType?: string;
-  isActive?: boolean;
+  typeId?: string;
+  status?: string;
 }
 
-export interface GetCatalogCategoriesQuery {
+export interface GetItemTypesQuery {
   page?: number;
   limit?: number;
   search?: string;
-  isActive?: boolean;
+  categoryId?: string;
+}
+
+export interface GetItemCategoriesQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
 }
 
 export const catalogApiService = {
-  /** GET /api/v1/catalog-items (UC 2.5) */
-  async getCatalogItems(params?: GetCatalogItemsQuery) {
-    const response = await api.get('/catalog-items', { params });
+  // ===== Categories =====
+  /** GET /api/v1/catalog/categories */
+  async getCategories(params?: GetItemCategoriesQuery) {
+    const response = await api.get('/catalog/categories', { params });
     return response.data;
   },
 
-  /** GET /api/v1/catalog-items/{id} (UC 2.5) */
-  async getCatalogItem(id: string) {
-    const response = await api.get(`/catalog-items/${id}`);
+  /** GET /api/v1/catalog/categories/{id} */
+  async getCategory(id: string) {
+    const response = await api.get(`/catalog/categories/${id}`);
     return response.data;
   },
 
-  /** POST /api/v1/catalog-items (UC 2.5) */
-  async createCatalogItem(payload: CreateCatalogItemPayload) {
-    const response = await api.post('/catalog-items', payload);
+  /** POST /api/v1/catalog/categories */
+  async createCategory(payload: CreateItemCategoryPayload) {
+    const response = await api.post('/catalog/categories', payload);
     return response.data;
   },
 
-  /** PUT /api/v1/catalog-items/{id} (UC 2.5) */
-  async updateCatalogItem(id: string, payload: UpdateCatalogItemPayload) {
-    const response = await api.put(`/catalog-items/${id}`, payload);
+  /** PUT /api/v1/catalog/categories/{id} */
+  async updateCategory(id: string, payload: UpdateItemCategoryPayload) {
+    const response = await api.put(`/catalog/categories/${id}`, payload);
     return response.data;
   },
 
-  /** PUT /api/v1/catalog-items/{id}/deactivate (UC 2.5) */
-  async updateCatalogItemStatus(id: string, payload: UpdateCatalogItemStatusPayload) {
-    const response = await api.put(`/catalog-items/${id}/deactivate`, payload);
+  /**
+   * PATCH /api/v1/catalog/categories/{id}/status — backend hiện là no-op stub (không có cột
+   * isActive trên ItemCategory), gọi vẫn trả 200 nhưng không đổi gì thật.
+   */
+  async updateCategoryStatus(id: string, payload: UpdateItemCategoryStatusPayload) {
+    const response = await api.patch(`/catalog/categories/${id}/status`, payload);
     return response.data;
   },
 
-  /** GET /api/v1/catalog-categories (UC 2.5) */
-  async getCatalogCategories(params?: GetCatalogCategoriesQuery) {
-    const response = await api.get('/catalog-categories', { params });
+  // ===== Types =====
+  /** GET /api/v1/catalog/types */
+  async getTypes(params?: GetItemTypesQuery) {
+    const response = await api.get('/catalog/types', { params });
     return response.data;
   },
 
-  /** GET /api/v1/catalog-categories/{id} (UC 2.5) */
-  async getCatalogCategory(id: string) {
-    const response = await api.get(`/catalog-categories/${id}`);
+  /** POST /api/v1/catalog/types */
+  async createType(payload: CreateItemTypePayload) {
+    const response = await api.post('/catalog/types', payload);
     return response.data;
   },
 
-  /** POST /api/v1/catalog-categories (UC 2.5) */
-  async createCatalogCategory(payload: CreateCatalogCategoryPayload) {
-    const response = await api.post('/catalog-categories', payload);
+  /** PUT /api/v1/catalog/types/{id} */
+  async updateType(id: string, payload: UpdateItemTypePayload) {
+    const response = await api.put(`/catalog/types/${id}`, payload);
     return response.data;
   },
 
-  /** PUT /api/v1/catalog-categories/{id} (UC 2.5) */
-  async updateCatalogCategory(id: string, payload: UpdateCatalogCategoryPayload) {
-    const response = await api.put(`/catalog-categories/${id}`, payload);
+  // ===== Type Specs (BOM) =====
+  /** GET /api/v1/catalog/types/{id}/specs */
+  async getTypeSpecs(typeId: string) {
+    const response = await api.get(`/catalog/types/${typeId}/specs`);
     return response.data;
   },
 
-  /** PUT /api/v1/catalog-categories/{id}/deactivate (UC 2.5) */
-  async updateCatalogCategoryStatus(id: string, payload: UpdateCatalogCategoryStatusPayload) {
-    const response = await api.put(`/catalog-categories/${id}/deactivate`, payload);
+  /** POST /api/v1/catalog/types/{id}/specs — thay TOÀN BỘ danh sách specs */
+  async updateTypeSpecs(typeId: string, payload: UpdateTypeSpecsPayload) {
+    const response = await api.post(`/catalog/types/${typeId}/specs`, payload);
+    return response.data;
+  },
+
+  // ===== Items =====
+  /** GET /api/v1/catalog/items */
+  async getItems(params?: GetItemsQuery) {
+    const response = await api.get('/catalog/items', { params });
+    return response.data;
+  },
+
+  /** GET /api/v1/catalog/items/{id} */
+  async getItem(id: string) {
+    const response = await api.get(`/catalog/items/${id}`);
+    return response.data;
+  },
+
+  /** POST /api/v1/catalog/items */
+  async createItem(payload: CreateItemPayload) {
+    const response = await api.post('/catalog/items', payload);
+    return response.data;
+  },
+
+  /** PUT /api/v1/catalog/items/{id} */
+  async updateItem(id: string, payload: UpdateItemPayload) {
+    const response = await api.put(`/catalog/items/${id}`, payload);
+    return response.data;
+  },
+
+  /** PATCH /api/v1/catalog/items/{id}/status */
+  async updateItemStatus(id: string, payload: UpdateItemStatusPayload) {
+    const response = await api.patch(`/catalog/items/${id}/status`, payload);
     return response.data;
   },
 };

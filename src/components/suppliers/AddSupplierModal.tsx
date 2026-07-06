@@ -4,18 +4,7 @@ import { useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
 import { supplierApiService } from '@/services/supplier.service';
-
-const SERVICE_CATEGORY_OPTIONS = [
-  { value: '', label: '— Chọn danh mục —' },
-  { value: 'Hoa tươi & trang trí', label: 'Hoa tươi & trang trí' },
-  { value: 'Âm thanh & ánh sáng', label: 'Âm thanh & ánh sáng' },
-  { value: 'Thiết bị sự kiện', label: 'Thiết bị sự kiện' },
-  { value: 'Trang trí tiệc cưới', label: 'Trang trí tiệc cưới' },
-  { value: 'Phương tiện vận chuyển', label: 'Phương tiện vận chuyển' },
-  { value: 'Khác', label: 'Khác' },
-];
 
 interface AddSupplierModalProps {
   isOpen: boolean;
@@ -23,24 +12,27 @@ interface AddSupplierModalProps {
   onSuccess: () => void;
 }
 
+// createSupplierSchema thật KHÔNG nhận `email` trong body (dù model Supplier có cột email) — bỏ
+// field này khỏi form để tránh gây hiểu nhầm là lưu được. Xem D:\bnwems-backend-api
+// src\validators\supplier.validator.ts.
 export default function AddSupplierModal({ isOpen, onClose, onSuccess }: Readonly<AddSupplierModalProps>) {
-  const [name, setName] = useState('');
+  const [supplierCode, setSupplierCode] = useState('');
+  const [supplierName, setSupplierName] = useState('');
   const [contactPerson, setContactPerson] = useState('');
   const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
-  const [serviceCategory, setServiceCategory] = useState('');
+  const [serviceType, setServiceType] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const reset = () => {
-    setName('');
+    setSupplierCode('');
+    setSupplierName('');
     setContactPerson('');
     setPhone('');
-    setEmail('');
     setAddress('');
-    setServiceCategory('');
+    setServiceType('');
     setErrors({});
     setSubmitError(null);
   };
@@ -52,8 +44,9 @@ export default function AddSupplierModal({ isOpen, onClose, onSuccess }: Readonl
 
   const validate = (): Record<string, string> => {
     const errs: Record<string, string> = {};
-    if (!name.trim()) errs.name = 'Vui lòng nhập tên nhà cung cấp';
-    if (!phone.trim()) errs.phone = 'Vui lòng nhập số điện thoại';
+    if (!supplierCode.trim()) errs.supplierCode = 'Vui lòng nhập mã nhà cung cấp';
+    if (!supplierName.trim()) errs.supplierName = 'Vui lòng nhập tên nhà cung cấp';
+    if (!serviceType.trim()) errs.serviceType = 'Vui lòng nhập loại dịch vụ';
     return errs;
   };
 
@@ -64,7 +57,14 @@ export default function AddSupplierModal({ isOpen, onClose, onSuccess }: Readonl
     setIsSubmitting(true);
     setSubmitError(null);
     try {
-      await supplierApiService.createSupplier({ name, contactPerson, phone, email, address, serviceCategory });
+      await supplierApiService.createSupplier({
+        supplierCode: supplierCode.trim(),
+        supplierName: supplierName.trim(),
+        serviceType: serviceType.trim(),
+        contactPerson: contactPerson.trim() || undefined,
+        phone: phone.trim() || undefined,
+        address: address.trim() || undefined,
+      });
       reset();
       onSuccess();
       onClose();
@@ -79,56 +79,40 @@ export default function AddSupplierModal({ isOpen, onClose, onSuccess }: Readonl
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Thêm nhà cung cấp mới">
       <div className="space-y-4 p-1">
-        <Input
-          label="Tên nhà cung cấp"
-          required
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="VD: Công ty Hoa tươi Đà Lạt"
-          error={errors.name}
-        />
         <div className="grid grid-cols-2 gap-3">
           <Input
-            label="Người liên hệ"
-            value={contactPerson}
-            onChange={(e) => setContactPerson(e.target.value)}
-            placeholder="Họ và tên"
+            label="Mã nhà cung cấp"
+            required
+            value={supplierCode}
+            onChange={(e) => setSupplierCode(e.target.value)}
+            placeholder="VD: SUP-001"
+            error={errors.supplierCode}
           />
           <Input
-            label="Số điện thoại"
+            label="Tên nhà cung cấp"
             required
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="09xxxxxxxx"
-            error={errors.phone}
+            value={supplierName}
+            onChange={(e) => setSupplierName(e.target.value)}
+            placeholder="VD: Công ty Hoa tươi Đà Lạt"
+            error={errors.supplierName}
           />
         </div>
-        <Input
-          label="Email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="supplier@gmail.com"
-        />
-        <Input
-          label="Địa chỉ trụ sở"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          placeholder="Số nhà, đường, quận/huyện, tỉnh/thành"
-        />
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">Danh mục dịch vụ</label>
-          <Select
-            value={serviceCategory}
-            onChange={(e) => setServiceCategory(e.target.value)}
-            options={SERVICE_CATEGORY_OPTIONS}
-          />
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Người liên hệ" value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} placeholder="Họ và tên" />
+          <Input label="Số điện thoại" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="09xxxxxxxx" />
         </div>
+        <Input label="Địa chỉ trụ sở" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Số nhà, đường, quận/huyện, tỉnh/thành" />
+        <Input
+          label="Loại dịch vụ"
+          required
+          value={serviceType}
+          onChange={(e) => setServiceType(e.target.value)}
+          placeholder="VD: Hoa tươi & trang trí"
+          error={errors.serviceType}
+        />
 
         {submitError && (
-          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 ring-1 ring-inset ring-red-200">
-            {submitError}
-          </p>
+          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 ring-1 ring-inset ring-red-200">{submitError}</p>
         )}
 
         <div className="flex justify-end gap-2 pt-2">

@@ -1,109 +1,53 @@
-// UC 2.13 / UC 2.23 — Inventory & Warehouse Management (docs/api/05-warehouse-inventory.md)
-// Lưu ý: doc API mới KHÔNG còn endpoint liệt kê kho (GET /warehouses) — warehouseId chỉ
-// dùng để lọc/tham chiếu, không có cách tra tên/địa chỉ kho từ FE nữa.
+// docs/api/05-warehouse-inventory.md — ĐÃ LỖI THỜI sau đợt backend refactor 2026-07-06. Không còn
+// khái niệm nhiều kho (warehouseId) — Inventory giờ khoá 1-1 theo itemId duy nhất.
+// Nguồn: D:\bnwems-backend-api prisma/schema.prisma (model Inventory/InventoryMovement),
+// inventory.route.ts, inventory.validator.ts, inventory.service.ts.
 
 // GET /api/v1/inventory
 export interface InventoryRow {
-  id: string;
-  warehouseId: string;
-  catalogItemId: string;
-  availableQuantity: number;
-  reservedQuantity: number;
-  checkedOutQuantity: number;
-  damagedQuantity: number;
-  lostQuantity: number;
+  inventoryId: string;
+  itemId: string;
+  quantityTotal: number;
+  quantityDamaged: number;
+  quantityReserved: number;
+  quantityAvailable: number;
+  itemName?: string; // join thêm khi GET
   updatedAt: string;
 }
 
 export interface GetInventoryQuery {
-  warehouseId?: string;
-  catalogItemId?: string;
+  itemId?: string;
   page?: number;
   limit?: number;
 }
 
-// POST /api/v1/inventory — KHÔNG có trong docs/api/05-warehouse-inventory.md. Thêm tạm ở
-// phía code/mock để hỗ trợ UI "Thêm tồn kho" ở /admin/inventory/stock-status; cần đồng bộ
-// lại doc + backend thật khi có endpoint chính thức.
-export interface CreateInventoryRequest {
-  warehouseId: string;
-  catalogItemId: string;
-  availableQuantity: number;
-}
-
-// PUT /api/v1/inventory/:id — KHÔNG có trong docs/api/05-warehouse-inventory.md. Thêm tạm để
-// hỗ trợ UI "Sửa tồn kho" (điều chỉnh số lượng thủ công); cần đồng bộ lại doc + backend thật.
-export interface UpdateInventoryRequest {
-  availableQuantity: number;
-  reservedQuantity: number;
-  checkedOutQuantity: number;
-  damagedQuantity: number;
-  lostQuantity: number;
-}
-
-// GET /api/v1/inventory/availability
-export interface InventoryAvailability {
-  catalogItemId: string;
-  isAvailable: boolean;
-  availableQuantityOnDate: number;
-}
-
-export interface GetInventoryAvailabilityQuery {
-  eventDate: string;
+// POST /api/v1/inventory/adjust — quantityChange có thể âm/dương
+export interface AdjustInventoryPayload {
   itemId: string;
+  quantityChange: number;
+  notes?: string;
 }
 
-// POST /api/v1/inventory/reserve
-export interface ReserveInventoryItem {
-  catalogItemId: string;
+export type MovementType = 'OUTBOUND' | 'INBOUND' | 'ADJUSTMENT';
+
+// GET /api/v1/inventory/movements
+export interface InventoryMovement {
+  movementId: string;
+  itemId: string;
+  orderId?: string;
+  reportId?: string;
+  movementType: MovementType;
   quantity: number;
-}
-
-export interface ReserveInventoryRequest {
-  orderId: string;
-  items: ReserveInventoryItem[];
-}
-
-// GET /api/v1/warehouse-histories
-export type WarehouseTransactionType = 'CHECKOUT' | 'RETURN' | 'ADJUSTMENT';
-
-export interface WarehouseHistory {
-  id: string;
-  warehouseId: string;
-  transactionType: WarehouseTransactionType;
   performedBy: string;
+  notes?: string;
+  itemName?: string;
+  performedByName?: string;
   createdAt: string;
 }
 
-export interface GetWarehouseHistoriesQuery {
-  transactionType?: WarehouseTransactionType;
+export interface GetInventoryMovementsQuery {
+  itemId?: string;
+  movementType?: MovementType;
   page?: number;
   limit?: number;
-}
-
-// POST /api/v1/warehouse/checkout
-export interface CheckoutInventoryItem {
-  catalogItemId: string;
-  quantity: number;
-}
-
-export interface CheckoutInventoryRequest {
-  warehouseId: string;
-  orderId: string;
-  items: CheckoutInventoryItem[];
-}
-
-// POST /api/v1/warehouse/return
-export type InventoryItemCondition = 'GOOD' | 'DAMAGED';
-
-export interface ReturnInventoryItem {
-  catalogItemId: string;
-  quantity: number;
-  condition: InventoryItemCondition;
-}
-
-export interface ReturnInventoryRequest {
-  warehouseId: string;
-  orderId: string;
-  items: ReturnInventoryItem[];
 }

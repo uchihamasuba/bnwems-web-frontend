@@ -4,25 +4,20 @@ import { motion } from 'framer-motion';
 import { Calendar, Clock, Plus } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
-import { FIELD_STATUS_META } from './surveyPersonnel.constants';
+import { SCHEDULE_STATUS_META } from './surveyPersonnel.constants';
 import { formatDate, formatTime } from '@/utils/formatDate';
-import type { AssignmentGroup } from '@/types/assignment';
+import type { SchedulePlan } from '@/types/schedulePlan';
 
 interface ExecutionPersonnelCardProps {
-  group: AssignmentGroup | null;
+  plans: SchedulePlan[];
   canManage: boolean;
   canAssign: boolean;
   isLoading: boolean;
   onAssign: () => void;
 }
 
-export default function ExecutionPersonnelCard({
-  group,
-  canManage,
-  canAssign,
-  isLoading,
-  onAssign,
-}: Readonly<ExecutionPersonnelCardProps>) {
+// Mỗi nhân sự thi công = 1 SchedulePlan riêng (không còn nhóm nhiều người trong 1 bản ghi).
+export default function ExecutionPersonnelCard({ plans, canManage, canAssign, isLoading, onAssign }: Readonly<ExecutionPersonnelCardProps>) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -48,35 +43,36 @@ export default function ExecutionPersonnelCard({
       <div className="mt-4">
         {isLoading ? (
           <p className="text-sm text-slate-400">Đang tải...</p>
-        ) : !group || group.members.length === 0 ? (
+        ) : plans.length === 0 ? (
           <p className="text-sm text-slate-500">Chưa phân công nhân sự thi công.</p>
         ) : (
-          <>
-            <div className="mb-3 flex items-center gap-4 text-xs text-slate-500">
-              <span className="inline-flex items-center gap-1">
-                <Calendar className="h-3.5 w-3.5" />
-                {formatDate(group.scheduledStart)}
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <Clock className="h-3.5 w-3.5" />
-                {group.shiftLabel ?? `${formatTime(group.scheduledStart)} - ${formatTime(group.scheduledEnd)}`}
-              </span>
-            </div>
-            <div className="space-y-2">
-              {group.members.map((m, idx) => (
-                <div key={m.userId + idx} className="flex items-center justify-between gap-3">
+          <div className="space-y-3">
+            {plans.map((plan) => (
+              <div key={plan.planId} className="space-y-2 border-b border-slate-50 pb-3 last:border-0 last:pb-0">
+                <div className="flex items-center gap-4 text-xs text-slate-500">
+                  <span className="inline-flex items-center gap-1">
+                    <Calendar className="h-3.5 w-3.5" />
+                    {formatDate(plan.startTime)}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <Clock className="h-3.5 w-3.5" />
+                    {formatTime(plan.startTime)}
+                    {plan.endTime ? ` - ${formatTime(plan.endTime)}` : ''}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <Avatar name={m.fullName} size="sm" />
+                    <Avatar name={plan.assigneeName ?? String(plan.assignedTo)} size="sm" />
                     <div>
-                      <p className="text-sm font-medium text-slate-800">{m.fullName}</p>
-                      <p className="text-xs text-slate-400">{m.assignedRole}</p>
+                      <p className="text-sm font-medium text-slate-800">{plan.assigneeName ?? `NV #${plan.assignedTo}`}</p>
+                      <p className="text-xs text-slate-400">{plan.taskName}</p>
                     </div>
                   </div>
-                  {m.fieldStatus && <Badge variant={FIELD_STATUS_META[m.fieldStatus].variant}>{FIELD_STATUS_META[m.fieldStatus].label}</Badge>}
+                  <Badge variant={SCHEDULE_STATUS_META[plan.status].variant}>{SCHEDULE_STATUS_META[plan.status].label}</Badge>
                 </div>
-              ))}
-            </div>
-          </>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </motion.div>

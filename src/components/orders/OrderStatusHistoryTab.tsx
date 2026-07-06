@@ -20,7 +20,7 @@ export default function OrderStatusHistoryTab({ order }: Readonly<OrderStatusHis
         </div>
         <div className="flex items-center justify-between text-sm">
           <span className="text-slate-500">Trạng thái hiện tại</span>
-          <OrderStatusBadge status={order.status} />
+          <OrderStatusBadge status={order.orderStatus} />
         </div>
         <p className="text-xs text-slate-400">
           Backend chưa có endpoint trả lịch sử đổi trạng thái đầy đủ — xem docs/more-require.md.

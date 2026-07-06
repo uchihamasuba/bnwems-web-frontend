@@ -2,16 +2,32 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AxiosError } from 'axios';
-import { Package, User } from 'lucide-react';
+import { Package, User, Plus, Trash2 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { orderApiService } from '@/services/order.service';
+import { catalogApiService } from '@/services/catalog.service';
 import { EVENT_TYPES } from '@/constants/order-event-type';
+import { formatCurrency } from '@/utils/formatCurrency';
 import type { Customer } from '@/types/customer';
+import type { Item } from '@/types/catalog';
 
 const EVENT_TYPE_OPTIONS = EVENT_TYPES.map((t) => ({ value: t, label: t }));
+
+interface OrderItemDraft {
+  key: string;
+  itemId: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+let draftKeySeq = 0;
+function nextDraftKey(): string {
+  draftKeySeq += 1;
+  return `item-${draftKeySeq}`;
+}
 
 interface CreateOrderModalProps {
   isOpen: boolean;
@@ -27,9 +43,11 @@ export default function CreateOrderModal({ isOpen, customers, onClose, onCreated
 
   const [eventType, setEventType] = useState('');
   const [eventDate, setEventDate] = useState('');
-  const [eventEndDate, setEventEndDate] = useState('');
-  const [venueAddress, setVenueAddress] = useState('');
+  const [location, setLocation] = useState('');
   const [guestCount, setGuestCount] = useState('');
+
+  const [itemList, setItemList] = useState<Item[]>([]);
+  const [items, setItems] = useState<OrderItemDraft[]>([]);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -37,10 +55,21 @@ export default function CreateOrderModal({ isOpen, customers, onClose, onCreated
 
   const customerFieldRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    catalogApiService.getItems({ limit: 200 }).then((res) => setItemList(res.data ?? []));
+  }, [isOpen]);
+
+  const itemById = useMemo(() => new Map(itemList.map((i) => [i.itemId, i])), [itemList]);
+  const itemOptions = useMemo(
+    () => itemList.map((i) => ({ value: i.itemId, label: `${i.itemName} (${formatCurrency(i.rentalPrice)})` })),
+    [itemList],
+  );
+
   const filteredCustomers = useMemo(() => {
     const term = customerQuery.trim().toLowerCase();
     if (!term) return customers.slice(0, 8);
-    return customers.filter((c) => c.fullName.toLowerCase().includes(term) || c.phone.includes(term)).slice(0, 8);
+    return customers.filter((c) => c.customerName.toLowerCase().includes(term) || c.phone.includes(term)).slice(0, 8);
   }, [customers, customerQuery]);
 
   const selectedCustomer = useMemo(
@@ -65,9 +94,9 @@ export default function CreateOrderModal({ isOpen, customers, onClose, onCreated
     setIsCustomerDropdownOpen(false);
     setEventType('');
     setEventDate('');
-    setEventEndDate('');
-    setVenueAddress('');
+    setLocation('');
     setGuestCount('');
+    setItems([]);
     setErrors({});
     setSubmitError(null);
     onClose();
@@ -75,18 +104,41 @@ export default function CreateOrderModal({ isOpen, customers, onClose, onCreated
 
   const handleSelectCustomer = (customer: Customer) => {
     setCustomerId(customer.customerId);
-    setCustomerQuery(customer.fullName);
+    setCustomerQuery(customer.customerName);
     setIsCustomerDropdownOpen(false);
   };
+
+  const handleAddItem = () => {
+    const first = itemList[0];
+    setItems((prev) => [
+      ...prev,
+      { key: nextDraftKey(), itemId: first?.itemId ?? '', quantity: 1, unitPrice: first?.rentalPrice ?? 0 },
+    ]);
+  };
+
+  const handleRemoveItem = (key: string) => {
+    setItems((prev) => prev.filter((item) => item.key !== key));
+  };
+
+  const handleItemChange = (key: string, itemId: string) => {
+    const item = itemById.get(itemId);
+    setItems((prev) => prev.map((row) => (row.key === key ? { ...row, itemId, unitPrice: item?.rentalPrice ?? row.unitPrice } : row)));
+  };
+
+  const handleQuantityChange = (key: string, quantity: number) => {
+    setItems((prev) => prev.map((item) => (item.key === key ? { ...item, quantity } : item)));
+  };
+
+  const handleUnitPriceChange = (key: string, unitPrice: number) => {
+    setItems((prev) => prev.map((item) => (item.key === key ? { ...item, unitPrice } : item)));
+  };
+
+  const totalAmount = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
 
   const validate = (): Record<string, string> => {
     const next: Record<string, string> = {};
     if (!customerId) next.customerId = 'Vui lòng chọn khách hàng';
 
-    // So sánh trực tiếp chuỗi "YYYY-MM-DD" (giá trị gốc của input date, theo giờ địa phương) thay vì
-    // `new Date(eventDate) <= new Date(...)` — chuỗi date-only bị `new Date()` hiểu là UTC trong khi
-    // `new Date().toDateString()` lại là giờ địa phương, lệch múi giờ khiến chọn "hôm nay" bị lọt qua
-    // validate ở FE rồi mới bị backend từ chối (BR-11-02 docs/api/09-orders.md: phải ở tương lai).
     const todayStr = new Date().toLocaleDateString('en-CA');
     if (!eventDate) {
       next.eventDate = 'Vui lòng chọn ngày tổ chức';
@@ -94,13 +146,11 @@ export default function CreateOrderModal({ isOpen, customers, onClose, onCreated
       next.eventDate = 'Ngày tổ chức phải sau ngày hôm nay';
     }
 
-    if (eventEndDate && eventDate && eventEndDate < eventDate) {
-      next.eventEndDate = 'Ngày kết thúc không được trước ngày tổ chức';
-    }
-
-    if (!venueAddress.trim()) next.venueAddress = 'Vui lòng nhập địa điểm tổ chức';
-
+    if (!eventType) next.eventType = 'Vui lòng chọn loại sự kiện';
+    if (!location.trim()) next.location = 'Vui lòng nhập địa điểm tổ chức';
     if (guestCount && Number(guestCount) < 1) next.guestCount = 'Số lượng khách phải lớn hơn 0';
+    if (items.length === 0) next.items = 'Vui lòng thêm ít nhất một hạng mục thiết bị/dịch vụ';
+    if (items.some((item) => !item.itemId)) next.items = 'Vui lòng chọn thiết bị/dịch vụ cho tất cả các hạng mục';
 
     return next;
   };
@@ -115,11 +165,11 @@ export default function CreateOrderModal({ isOpen, customers, onClose, onCreated
     try {
       await orderApiService.createOrder({
         customerId,
+        eventType,
         eventDate: new Date(eventDate).toISOString(),
-        venueAddress: venueAddress.trim(),
-        ...(eventEndDate ? { eventEndDate: new Date(eventEndDate).toISOString() } : {}),
-        ...(eventType ? { eventType } : {}),
+        location: location.trim(),
         ...(guestCount ? { guestCount: Number(guestCount) } : {}),
+        items: items.map((item) => ({ itemId: item.itemId, quantity: item.quantity, unitPrice: item.unitPrice })),
       });
       resetAndClose();
       onCreated();
@@ -183,7 +233,7 @@ export default function CreateOrderModal({ isOpen, customers, onClose, onCreated
                           onClick={() => handleSelectCustomer(c)}
                           className="flex w-full flex-col items-start px-3 py-2 text-left text-sm hover:bg-gray-50"
                         >
-                          <span className="font-medium text-gray-900">{c.fullName}</span>
+                          <span className="font-medium text-gray-900">{c.customerName}</span>
                           <span className="text-xs text-gray-500">{c.phone}</span>
                         </button>
                       </li>
@@ -221,6 +271,8 @@ export default function CreateOrderModal({ isOpen, customers, onClose, onCreated
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Select
               label="Loại sự kiện"
+              required
+              error={errors.eventType}
               placeholder="Chọn loại sự kiện"
               value={eventType}
               onChange={(e) => setEventType(e.target.value)}
@@ -235,13 +287,6 @@ export default function CreateOrderModal({ isOpen, customers, onClose, onCreated
               onChange={(e) => setEventDate(e.target.value)}
             />
             <Input
-              type="date"
-              label="Ngày kết thúc"
-              value={eventEndDate}
-              error={errors.eventEndDate}
-              onChange={(e) => setEventEndDate(e.target.value)}
-            />
-            <Input
               type="number"
               label="Số lượng khách"
               min={1}
@@ -252,15 +297,86 @@ export default function CreateOrderModal({ isOpen, customers, onClose, onCreated
             />
             <div className="sm:col-span-2">
               <Input
-                label="Tên địa điểm"
+                label="Địa điểm tổ chức"
                 required
                 placeholder="VD: 123 Đường ABC, Quận 1, TP.HCM"
-                value={venueAddress}
-                error={errors.venueAddress}
-                onChange={(e) => setVenueAddress(e.target.value)}
+                value={location}
+                error={errors.location}
+                onChange={(e) => setLocation(e.target.value)}
               />
             </div>
           </div>
+        </div>
+
+        <div className="border-t border-slate-100 pt-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-900">Hạng mục thiết bị/dịch vụ</h3>
+            <Button type="button" variant="secondary" size="sm" onClick={handleAddItem} disabled={itemList.length === 0}>
+              <Plus className="h-4 w-4" />
+              Thêm hạng mục
+            </Button>
+          </div>
+
+          {items.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-sm text-slate-400">
+              Chưa có hạng mục nào. Đơn hàng cần ít nhất 1 hạng mục thiết bị/dịch vụ.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {items.map((item, idx) => {
+                const lineTotal = item.quantity * item.unitPrice;
+                return (
+                  <div key={item.key} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-12 sm:items-end">
+                      <div className="sm:col-span-5">
+                        <Select
+                          label={`Hạng mục #${idx + 1}`}
+                          value={item.itemId}
+                          placeholder="-- Chọn thiết bị/dịch vụ --"
+                          onChange={(e) => handleItemChange(item.key, e.target.value)}
+                          options={itemOptions}
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <Input
+                          type="number"
+                          label="Số lượng"
+                          min={1}
+                          value={item.quantity}
+                          onChange={(e) => handleQuantityChange(item.key, Math.max(1, Number(e.target.value) || 1))}
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <Input
+                          type="number"
+                          label="Đơn giá (đ)"
+                          min={0}
+                          value={item.unitPrice}
+                          onChange={(e) => handleUnitPriceChange(item.key, Math.max(0, Number(e.target.value) || 0))}
+                        />
+                      </div>
+                      <div className="sm:col-span-2 text-sm">
+                        <span className="mb-1 block text-xs font-medium text-slate-500">Thành tiền</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(lineTotal)}</span>
+                      </div>
+                      <div className="flex justify-end sm:col-span-1">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveItem(item.key)}
+                          className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                          title="Xóa hạng mục"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="flex justify-end text-sm font-bold text-slate-900">Tổng tiền: {formatCurrency(totalAmount)}</div>
+            </div>
+          )}
+          {errors.items && <p className="mt-2 text-sm text-red-600">{errors.items}</p>}
         </div>
 
         {submitError && <p className="text-sm text-red-600">{submitError}</p>}

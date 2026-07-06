@@ -17,51 +17,40 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { usePermission } from '@/hooks/usePermission';
 import { formatDate } from '@/utils/formatDate';
 import { formatCurrency } from '@/utils/formatCurrency';
-import type { CatalogCategory, CatalogItem } from '@/types/catalog';
+import type { Item, ItemType, ItemStatus } from '@/types/catalog';
 
-const ITEM_TYPE_LABEL: Record<string, string> = {
-  EQUIPMENT: 'Thiết bị',
-  SERVICE: 'Dịch vụ',
-  MATERIAL: 'Vật tư',
-  PACKAGE: 'Gói',
+const STATUS_LABEL: Record<ItemStatus, string> = {
+  ACTIVE: 'Đang hoạt động',
+  INACTIVE: 'Ngừng hoạt động',
+  MAINTENANCE: 'Bảo trì',
 };
 
-const ITEM_TYPE_OPTIONS = [
-  { value: 'EQUIPMENT', label: 'Thiết bị' },
-  { value: 'SERVICE', label: 'Dịch vụ' },
-  { value: 'MATERIAL', label: 'Vật tư' },
-  { value: 'PACKAGE', label: 'Gói' },
-];
-
-const STATUS_OPTIONS = [
-  { value: 'true', label: 'Đang hoạt động' },
-  { value: 'false', label: 'Đã vô hiệu hóa' },
-];
+const STATUS_OPTIONS = Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label }));
 
 export default function Page() {
   const { can } = usePermission();
   const canManage = can('master-data:manage');
 
-  const [items, setItems] = useState<CatalogItem[]>([]);
-  const [categories, setCategories] = useState<CatalogCategory[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
+  const [types, setTypes] = useState<ItemType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    catalogApiService.getCatalogCategories({ limit: 100 }).then((res) => setCategories(res.data));
+    catalogApiService.getTypes({ limit: 200 }).then((res) => setTypes(res.data ?? []));
   }, []);
 
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 400);
-  const [itemTypeFilter, setItemTypeFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
   const { pagination, setPage, updatePagination } = usePagination(10);
 
-  const [formModal, setFormModal] = useState<{ mode: 'create' | 'edit'; item: CatalogItem | null } | null>(null);
+  const [formModal, setFormModal] = useState<{ mode: 'create' | 'edit'; item: Item | null } | null>(null);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const [formError, setFormError] = useState('');
 
-  const [detailItem, setDetailItem] = useState<CatalogItem | null>(null);
+  const [detailItem, setDetailItem] = useState<Item | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const refetchItems = () => setRefreshToken((t) => t + 1);
 
@@ -69,12 +58,12 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag toggled before/after the fetch below, not a render loop
     setIsLoading(true);
     catalogApiService
-      .getCatalogItems({
+      .getItems({
         page: pagination.currentPage,
         limit: pagination.limit,
         search: debouncedSearch || undefined,
-        itemType: itemTypeFilter || undefined,
-        isActive: statusFilter ? statusFilter === 'true' : undefined,
+        typeId: typeFilter || undefined,
+        status: statusFilter || undefined,
       })
       .then((res) => {
         setItems(res.data);
@@ -85,13 +74,13 @@ export default function Page() {
       })
       .finally(() => setIsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pagination.currentPage, pagination.limit, debouncedSearch, itemTypeFilter, statusFilter, refreshToken]);
+  }, [pagination.currentPage, pagination.limit, debouncedSearch, typeFilter, statusFilter, refreshToken]);
 
   const handleCreateSubmit = async (values: CatalogItemFormValues) => {
     setIsSubmittingForm(true);
     setFormError('');
     try {
-      await catalogApiService.createCatalogItem(values);
+      await catalogApiService.createItem(values);
       setFormModal(null);
       refetchItems();
     } catch (err) {
@@ -101,15 +90,16 @@ export default function Page() {
     }
   };
 
-  const handleEditSubmit = async (values: CatalogItemFormValues, item: CatalogItem) => {
+  const handleEditSubmit = async (values: CatalogItemFormValues, item: Item) => {
     setIsSubmittingForm(true);
     setFormError('');
     try {
-      await catalogApiService.updateCatalogItem(item.id, {
-        name: values.name,
+      await catalogApiService.updateItem(item.itemId, {
+        itemName: values.itemName,
         description: values.description,
-        basePrice: values.basePrice,
-        categoryId: values.categoryId,
+        unit: values.unit,
+        rentalPrice: values.rentalPrice,
+        typeId: values.typeId,
       });
       setFormModal(null);
       refetchItems();
@@ -120,48 +110,31 @@ export default function Page() {
     }
   };
 
-  const handleDeactivate = async (item: CatalogItem) => {
-    const nextIsActive = !item.isActive;
-    const confirmMessage = nextIsActive
-      ? `Kích hoạt lại thiết bị "${item.name}"?`
-      : `Vô hiệu hóa thiết bị "${item.name}"? Thiết bị sẽ không được sử dụng cho đơn hàng mới.`;
+  const handleToggleStatus = async (item: Item) => {
+    const nextStatus: ItemStatus = item.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    const confirmMessage =
+      nextStatus === 'ACTIVE'
+        ? `Kích hoạt lại thiết bị "${item.itemName}"?`
+        : `Vô hiệu hóa thiết bị "${item.itemName}"? Thiết bị sẽ không được sử dụng cho đơn hàng mới.`;
     if (!window.confirm(confirmMessage)) return;
 
     try {
-      await catalogApiService.updateCatalogItemStatus(item.id, { isActive: nextIsActive });
+      await catalogApiService.updateItemStatus(item.itemId, { status: nextStatus });
       refetchItems();
     } catch (err) {
       window.alert(getErrorMessage(err, 'Cập nhật trạng thái thất bại'));
     }
   };
 
-  const categoryNameById = new Map(categories.map((c) => [c.id, c.name]));
-
-  const columns: TableColumn<CatalogItem>[] = [
-    { key: 'name', label: 'Tên thiết bị' },
+  const columns: TableColumn<Item>[] = [
+    { key: 'itemCode', label: 'Mã' },
+    { key: 'itemName', label: 'Tên thiết bị' },
+    { key: 'typeName', label: 'Loại', render: (row) => row.typeName ?? '—' },
+    { key: 'rentalPrice', label: 'Đơn giá thuê', render: (row) => formatCurrency(row.rentalPrice) },
     {
-      key: 'itemType',
-      label: 'Loại',
-      render: (row) => ITEM_TYPE_LABEL[row.itemType] ?? row.itemType,
-    },
-    {
-      key: 'categoryId',
-      label: 'Danh mục',
-      render: (row) => (row.categoryId ? categoryNameById.get(row.categoryId) ?? row.categoryId : '—'),
-    },
-    {
-      key: 'basePrice',
-      label: 'Đơn giá',
-      render: (row) => formatCurrency(row.basePrice),
-    },
-    {
-      key: 'isActive',
+      key: 'status',
       label: 'Trạng thái',
-      render: (row) => (
-        <Badge variant={getStatusBadgeVariant(row.isActive ? 'ACTIVE' : 'INACTIVE')}>
-          {row.isActive ? 'Đang hoạt động' : 'Đã vô hiệu hóa'}
-        </Badge>
-      ),
+      render: (row) => <Badge variant={getStatusBadgeVariant(row.status)}>{STATUS_LABEL[row.status] ?? row.status}</Badge>,
     },
     {
       key: 'createdAt',
@@ -195,12 +168,12 @@ export default function Page() {
               </button>
               <button
                 type="button"
-                aria-label={row.isActive ? 'Vô hiệu hóa' : 'Kích hoạt'}
-                title={row.isActive ? 'Vô hiệu hóa' : 'Kích hoạt'}
-                onClick={() => handleDeactivate(row)}
+                aria-label={row.status === 'ACTIVE' ? 'Vô hiệu hóa' : 'Kích hoạt'}
+                title={row.status === 'ACTIVE' ? 'Vô hiệu hóa' : 'Kích hoạt'}
+                onClick={() => handleToggleStatus(row)}
                 className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-red-600"
               >
-                {row.isActive ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                {row.status === 'ACTIVE' ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
               </button>
             </>
           )}
@@ -247,12 +220,12 @@ export default function Page() {
           </div>
           <div className="w-48">
             <Select
-              value={itemTypeFilter}
+              value={typeFilter}
               onChange={(e) => {
-                setItemTypeFilter(e.target.value);
+                setTypeFilter(e.target.value);
                 setPage(1);
               }}
-              options={[{ value: '', label: 'Tất cả loại' }, ...ITEM_TYPE_OPTIONS]}
+              options={[{ value: '', label: 'Tất cả loại' }, ...types.map((t) => ({ value: t.typeId, label: t.typeName }))]}
             />
           </div>
           <div className="w-48">
@@ -268,7 +241,7 @@ export default function Page() {
         </div>
 
         <div className="mt-4">
-          <Table columns={columns} rows={items} rowKey={(row) => row.id} isLoading={isLoading} />
+          <Table columns={columns} rows={items} rowKey={(row) => row.itemId} isLoading={isLoading} />
         </div>
         <Pagination pagination={pagination} onPageChange={setPage} />
       </div>
@@ -277,7 +250,7 @@ export default function Page() {
         isOpen={!!formModal}
         mode={formModal?.mode ?? 'create'}
         item={formModal?.item}
-        categories={categories}
+        types={types}
         isSubmitting={isSubmittingForm}
         errorMessage={formError}
         onClose={() => {
@@ -293,12 +266,7 @@ export default function Page() {
         }}
       />
 
-      <CatalogItemDetailModal
-        isOpen={!!detailItem}
-        item={detailItem}
-        categoryName={detailItem?.categoryId ? categoryNameById.get(detailItem.categoryId) : undefined}
-        onClose={() => setDetailItem(null)}
-      />
+      <CatalogItemDetailModal isOpen={!!detailItem} item={detailItem} onClose={() => setDetailItem(null)} />
     </div>
   );
 }

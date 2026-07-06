@@ -3,8 +3,8 @@
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Calendar, ChevronLeft, ChevronRight, ClipboardList, MapPin } from 'lucide-react';
-import { TASK_STATUS_LABEL } from '@/constants/work-task';
-import type { Schedule } from '@/types/schedulePlan';
+import { SCHEDULE_STATUS_LABEL } from '@/constants/work-task';
+import type { SchedulePlan } from '@/types/schedulePlan';
 import type { Order } from '@/types/order';
 
 const WEEKDAY_LABELS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
@@ -37,8 +37,8 @@ function getMonthGrid(viewDate: Date): Date[] {
 
 function timelineDotColor(status: string, isDelayed: boolean): string {
   if (isDelayed) return 'bg-red-500';
-  if (status === 'in_progress') return 'bg-blue-600';
-  if (status === 'done') return 'bg-blue-300';
+  if (status === 'IN_PROGRESS') return 'bg-blue-600';
+  if (status === 'COMPLETED') return 'bg-blue-300';
   return 'bg-slate-300';
 }
 
@@ -47,7 +47,7 @@ export interface ScheduleTimelineProps {
   selectedDate: Date;
   onViewDateChange: (date: Date) => void;
   onSelectedDateChange: (date: Date) => void;
-  schedules: Schedule[];
+  schedules: SchedulePlan[];
   alertedTaskIds: Set<string>;
   orderById: Map<string, Order>;
   scheduleHref: string;
@@ -71,12 +71,12 @@ export default function ScheduleTimeline({
     month: 'long',
   });
 
-  // Nhóm theo scheduledStart — ngày/giờ dự kiến thật (hoặc fallback createdAt nếu chưa đặt lịch).
+  // Nhóm theo startTime — ngày/giờ dự kiến thật.
   const schedulesOnSelectedDate = schedules.filter((s) =>
-    isSameDay(new Date(s.scheduledStart), selectedDate),
+    isSameDay(new Date(s.startTime), selectedDate),
   );
   const datesWithSchedules = new Set(
-    schedules.map((s) => new Date(s.scheduledStart).toDateString()),
+    schedules.map((s) => new Date(s.startTime).toDateString()),
   );
 
   return (
@@ -164,12 +164,12 @@ export default function ScheduleTimeline({
             <div className="relative flex flex-col gap-5 before:absolute before:bottom-1 before:left-[13px] before:top-1 before:w-px before:bg-slate-200">
               {schedulesOnSelectedDate.map((schedule, index) => {
                 const order = orderById.get(schedule.orderId);
-                const isDelayed = alertedTaskIds.has(schedule.id);
-                const isActive = schedule.status === 'in_progress';
+                const isDelayed = alertedTaskIds.has(schedule.planId);
+                const isActive = schedule.status === 'IN_PROGRESS';
                 const dotColor = timelineDotColor(schedule.status, isDelayed);
                 return (
                   <motion.div
-                    key={schedule.id}
+                    key={schedule.planId}
                     initial={{ opacity: 0, x: -8 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.2, delay: index * 0.05 }}
@@ -187,10 +187,10 @@ export default function ScheduleTimeline({
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="truncate text-base font-semibold text-slate-800">
-                          {schedule.activityType}
+                          {schedule.taskName ?? `Task #${schedule.taskId}`}
                         </span>
                         <span className="flex-shrink-0 rounded-md bg-white px-2 py-0.5 text-xs font-medium text-blue-600 ring-1 ring-inset ring-blue-100">
-                          {formatTime(schedule.scheduledStart)}
+                          {formatTime(schedule.startTime)}
                         </span>
                       </div>
                       <p className="mt-1.5 flex items-center gap-1 text-xs text-slate-500">
@@ -210,8 +210,7 @@ export default function ScheduleTimeline({
                           </span>
                         ) : (
                           <span className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-500">
-                            {TASK_STATUS_LABEL[schedule.status as keyof typeof TASK_STATUS_LABEL] ??
-                              schedule.status}
+                            {SCHEDULE_STATUS_LABEL[schedule.status] ?? schedule.status}
                           </span>
                         )}
                       </div>

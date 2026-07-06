@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Eye, FileText, FileCheck2, FilePen, Search, Loader2, Plus, Pencil, Trash2 } from 'lucide-react';
-import { orderApiService } from '@/services/order.service';
 import { customerApiService } from '@/services/customer.service';
 import { quotationApiService } from '@/services/quotation.service';
 import { Table, TableColumn } from '@/components/ui/Table';
@@ -18,44 +17,43 @@ import DeleteQuotationModal from '@/components/orders/DeleteQuotationModal';
 import { usePermission } from '@/hooks/usePermission';
 import { formatCurrency } from '@/utils/formatCurrency';
 import { formatDate } from '@/utils/formatDate';
-import type { Order } from '@/types/order';
 import type { Customer } from '@/types/customer';
 import type { Quotation, QuotationDetail } from '@/types/quotation';
 
 // ---------------------------------------------------------------------------
-// Backend chỉ có API báo giá theo từng đơn hàng (GET /orders/:orderId/quotations,
-// GET /quotations/:id) — không có endpoint liệt kê TẤT CẢ báo giá toàn hệ thống
-// (xem docs/api/08-quotations.md, docs/more-require.md mục (m)). Trang này ghép danh sách
-// bằng cách quét từng trang đơn hàng thật (GET /orders) rồi gọi song song báo giá của các đơn
-// đó — dữ liệu 100% thật, chỉ là tải dần theo từng đợt đơn hàng thay vì 1 lần cho toàn hệ thống.
+// Backend chỉ có API báo giá theo từng khách hàng (GET /customers/:customerId/quotations,
+// GET /quotations/:id) — không có endpoint liệt kê TẤT CẢ báo giá toàn hệ thống. Trang này ghép
+// danh sách bằng cách quét từng trang khách hàng thật (GET /customers) rồi gọi song song báo giá
+// của các khách đó — dữ liệu 100% thật, chỉ là tải dần theo từng đợt khách hàng thay vì 1 lần.
 // ---------------------------------------------------------------------------
 
-const ORDER_BATCH_SIZE = 10;
+const CUSTOMER_BATCH_SIZE = 10;
 
 const STATUS_LABEL: Record<Quotation['status'], string> = {
-  draft: 'Nháp',
-  confirmed: 'Đã duyệt',
+  DRAFT: 'Nháp',
+  APPROVED: 'Đã duyệt',
+  REJECTED: 'Từ chối',
 };
 
 interface QuotationRow {
   quotation: Quotation;
-  order: Order;
+  customer: Customer;
 }
 
-async function fetchQuotationRowsForOrder(order: Order): Promise<QuotationRow[]> {
-  const qRes = await quotationApiService.getOrderQuotations(order.orderId, { limit: 50 });
+async function fetchQuotationRowsForCustomer(customer: Customer): Promise<QuotationRow[]> {
+  const qRes = await quotationApiService.getCustomerQuotations(customer.customerId, { limit: 50 });
   const list: Quotation[] = qRes.data ?? [];
-  return list.map((quotation) => ({ quotation, order }));
+  return list.map((quotation) => ({ quotation, customer }));
 }
 
 export default function Page() {
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [rows, setRows] = useState<QuotationRow[]>([]);
-  const [ordersLoaded, setOrdersLoaded] = useState(0);
-  const [ordersTotalCount, setOrdersTotalCount] = useState<number | null>(null);
-  const [currentOrderPage, setCurrentOrderPage] = useState(0);
+  const [customersLoaded, setCustomersLoaded] = useState(0);
+  const [customersTotalCount, setCustomersTotalCount] = useState<number | null>(null);
+  const [currentCustomerPage, setCurrentCustomerPage] = useState(0);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -63,42 +61,41 @@ export default function Page() {
   const { can } = usePermission();
   const canManage = can('orders:manage');
 
+  const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
+  const [createCustomerId, setCreateCustomerId] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [editingQuotation, setEditingQuotation] = useState<QuotationDetail | null>(null);
   const [loadingEditId, setLoadingEditId] = useState<string | null>(null);
 
   const [deletingRow, setDeletingRow] = useState<QuotationRow | null>(null);
 
   useEffect(() => {
-    customerApiService.getCustomers({ limit: 200 }).then((res) => setCustomers(res.data ?? []));
+    customerApiService.getCustomers({ limit: 200 }).then((res) => setAllCustomers(res.data ?? []));
   }, []);
 
-  // Nạp lại toàn bộ báo giá của 1 đơn hàng từ server và thay thế các dòng cũ của đơn đó trong
+  // Nạp lại toàn bộ báo giá của 1 khách hàng từ server và thay thế các dòng cũ của khách đó trong
   // bảng — dùng chung cho cả tạo mới (thêm phiên bản) và sửa bản nháp (cập nhật tại chỗ).
-  const refreshOrderQuotations = async (order: Order) => {
-    const res = await quotationApiService.getOrderQuotations(order.orderId, { limit: 50 });
+  const refreshCustomerQuotations = async (customer: Customer) => {
+    const res = await quotationApiService.getCustomerQuotations(customer.customerId, { limit: 50 });
     const list: Quotation[] = res.data ?? [];
     setRows((prev) => {
-      const others = prev.filter((r) => r.order.orderId !== order.orderId);
-      return [...list.map((quotation) => ({ quotation, order })), ...others];
+      const others = prev.filter((r) => r.customer.customerId !== customer.customerId);
+      return [...list.map((quotation) => ({ quotation, customer })), ...others];
     });
   };
 
-  // Đơn hàng chỉ được chọn NGAY TRÊN popup tạo báo giá (không còn bước chọn đơn hàng riêng trước
-  // đó) — nên ở đây chỉ biết orderId sau khi tạo xong, phải tự fetch lại Order để có đủ dữ liệu
-  // hiển thị (tên khách hàng...) cho dòng mới trong bảng.
-  const handleQuotationCreated = async (orderId: string) => {
-    const orderRes = await orderApiService.getOrder(orderId);
-    await refreshOrderQuotations(orderRes.data);
+  const handleQuotationCreated = async () => {
+    const customer = allCustomers.find((c) => c.customerId === createCustomerId);
+    if (customer) await refreshCustomerQuotations(customer);
   };
 
   const handleEditClick = async (row: QuotationRow) => {
     setLoadingEditId(row.quotation.quotationId);
     try {
       const res = await quotationApiService.getQuotation(row.quotation.quotationId);
-      setEditingOrder(row.order);
+      setEditingCustomer(row.customer);
       setEditingQuotation(res.data);
     } finally {
       setLoadingEditId(null);
@@ -106,73 +103,73 @@ export default function Page() {
   };
 
   const handleQuotationEdited = async () => {
-    if (!editingOrder) return;
-    await refreshOrderQuotations(editingOrder);
+    if (!editingCustomer) return;
+    await refreshCustomerQuotations(editingCustomer);
   };
 
   const handleQuotationDeleted = async () => {
     if (!deletingRow) return;
-    await refreshOrderQuotations(deletingRow.order);
+    await refreshCustomerQuotations(deletingRow.customer);
   };
 
-  const loadOrderPage = async (page: number) => {
-    const ordersRes = await orderApiService.getOrders({ page, limit: ORDER_BATCH_SIZE });
-    const orders: Order[] = ordersRes.data ?? [];
-    setOrdersTotalCount(ordersRes.meta?.totalCount ?? 0);
+  const loadCustomerPage = async (page: number) => {
+    const customersRes = await customerApiService.getCustomers({ page, limit: CUSTOMER_BATCH_SIZE });
+    const customers: Customer[] = customersRes.data ?? [];
+    setCustomersTotalCount(customersRes.meta?.totalCount ?? 0);
 
-    const perOrder = await Promise.all(orders.map(fetchQuotationRowsForOrder));
+    const perCustomer = await Promise.all(customers.map(fetchQuotationRowsForCustomer));
 
-    setRows((prev) => [...prev, ...perOrder.flat()]);
-    setOrdersLoaded((prev) => prev + orders.length);
-    setCurrentOrderPage(page);
+    setRows((prev) => [...prev, ...perCustomer.flat()]);
+    setCustomersLoaded((prev) => prev + customers.length);
+    setCurrentCustomerPage(page);
   };
 
   const hasLoadedInitialPage = useRef(false);
   useEffect(() => {
-    // Guard against React Strict Mode's dev-only double-invoke — loadOrderPage accumulates into
+    // Guard against React Strict Mode's dev-only double-invoke — loadCustomerPage accumulates into
     // `rows`, so calling it twice on mount would duplicate every row.
     if (hasLoadedInitialPage.current) return;
     hasLoadedInitialPage.current = true;
-    loadOrderPage(1).finally(() => setIsInitialLoading(false));
+    setLoadError(null);
+    loadCustomerPage(1)
+      .catch(() => setLoadError('Không thể tải danh sách khách hàng. Vui lòng thử lại.'))
+      .finally(() => setIsInitialLoading(false));
   }, []);
 
   const handleLoadMore = async () => {
     setIsLoadingMore(true);
+    setLoadError(null);
     try {
-      await loadOrderPage(currentOrderPage + 1);
+      await loadCustomerPage(currentCustomerPage + 1);
+    } catch {
+      setLoadError('Không thể tải thêm khách hàng. Vui lòng thử lại.');
     } finally {
       setIsLoadingMore(false);
     }
   };
 
-  const customerById = useMemo(() => new Map(customers.map((c) => [c.customerId, c])), [customers]);
-
   const filteredRows = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     return rows
-      .filter(({ quotation, order }) => {
+      .filter(({ quotation, customer }) => {
         if (statusFilter && quotation.status !== statusFilter) return false;
         if (!term) return true;
-        const customerName = customerById.get(order.customerId)?.fullName?.toLowerCase() ?? '';
-        return (
-          quotation.quotationId.toLowerCase().includes(term) ||
-          order.orderId.toLowerCase().includes(term) ||
-          customerName.includes(term)
-        );
+        const customerName = customer.customerName?.toLowerCase() ?? '';
+        return quotation.quotationId.toLowerCase().includes(term) || customerName.includes(term);
       })
       .sort((a, b) => new Date(b.quotation.createdAt).getTime() - new Date(a.quotation.createdAt).getTime());
-  }, [rows, searchTerm, statusFilter, customerById]);
+  }, [rows, searchTerm, statusFilter]);
 
-  const draftCount = rows.filter((r) => r.quotation.status === 'draft').length;
-  const confirmedCount = rows.filter((r) => r.quotation.status === 'confirmed').length;
+  const draftCount = rows.filter((r) => r.quotation.status === 'DRAFT').length;
+  const approvedCount = rows.filter((r) => r.quotation.status === 'APPROVED').length;
 
   const kpiItems: KpiCardItem[] = [
     { label: 'Tổng số báo giá (đã tải)', value: rows.length, icon: FileText, iconColor: 'blue' },
     { label: 'Bản nháp', value: draftCount, icon: FilePen, iconColor: 'amber' },
-    { label: 'Đã duyệt', value: confirmedCount, icon: FileCheck2, iconColor: 'green' },
+    { label: 'Đã duyệt', value: approvedCount, icon: FileCheck2, iconColor: 'green' },
   ];
 
-  const hasMoreOrders = ordersTotalCount !== null && ordersLoaded < ordersTotalCount;
+  const hasMoreCustomers = customersTotalCount !== null && customersLoaded < customersTotalCount;
 
   const columns: TableColumn<QuotationRow>[] = [
     {
@@ -180,36 +177,24 @@ export default function Page() {
       label: 'Mã báo giá',
       render: ({ quotation }) => (
         <Link href={`/manager/quotations/${quotation.quotationId}`} className="font-mono text-sm font-semibold text-blue-600 hover:underline">
-          #{quotation.quotationId}
-        </Link>
-      ),
-    },
-    {
-      key: 'orderId',
-      label: 'Mã đơn hàng',
-      render: ({ order }) => (
-        <Link href={`/manager/orders/${order.orderId}`} className="font-mono text-sm text-slate-500 hover:text-blue-600 hover:underline">
-          #{order.orderId}
+          {quotation.quotationCode}
         </Link>
       ),
     },
     {
       key: 'customer',
       label: 'Khách hàng',
-      render: ({ order }) => {
-        const customer = customerById.get(order.customerId);
-        return (
-          <div className="flex items-center gap-2.5">
-            <Avatar name={customer?.fullName ?? String(order.customerId)} size="sm" />
-            <span className="truncate font-medium text-slate-700">{customer?.fullName ?? `KH #${order.customerId}`}</span>
-          </div>
-        );
-      },
+      render: ({ customer }) => (
+        <div className="flex items-center gap-2.5">
+          <Avatar name={customer.customerName} size="sm" />
+          <span className="truncate font-medium text-slate-700">{customer.customerName}</span>
+        </div>
+      ),
     },
     {
       key: 'version',
       label: 'Phiên bản',
-      render: ({ quotation }) => <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">v{quotation.version}</span>,
+      render: ({ quotation }) => <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">{quotation.version}</span>,
     },
     {
       key: 'totalAmount',
@@ -225,7 +210,7 @@ export default function Page() {
     {
       key: 'status',
       label: 'Trạng thái',
-      render: ({ quotation }) => <Badge variant={getStatusBadgeVariant(quotation.status.toUpperCase())}>{STATUS_LABEL[quotation.status]}</Badge>,
+      render: ({ quotation }) => <Badge variant={getStatusBadgeVariant(quotation.status)}>{STATUS_LABEL[quotation.status]}</Badge>,
     },
     {
       key: 'actions',
@@ -240,7 +225,7 @@ export default function Page() {
           >
             <Eye className="h-4 w-4" />
           </Link>
-          {canManage && row.quotation.status === 'draft' && (
+          {canManage && row.quotation.status === 'DRAFT' && (
             <button
               type="button"
               onClick={() => handleEditClick(row)}
@@ -256,7 +241,7 @@ export default function Page() {
               )}
             </button>
           )}
-          {canManage && row.quotation.status === 'draft' && (
+          {canManage && row.quotation.status === 'DRAFT' && (
             <button
               type="button"
               onClick={() => setDeletingRow(row)}
@@ -277,13 +262,23 @@ export default function Page() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Danh sách báo giá</h1>
-          <p className="mt-1 text-sm text-slate-500">Tổng hợp các phiên bản báo giá đã gửi khách hàng theo từng đơn hàng.</p>
+          <p className="mt-1 text-sm text-slate-500">Tổng hợp các phiên bản báo giá đã gửi khách hàng.</p>
         </div>
         {canManage && (
-          <Button onClick={() => setIsCreateModalOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Tạo báo giá mới
-          </Button>
+          <div className="flex items-center gap-2">
+            <div className="w-56">
+              <Select
+                value={createCustomerId}
+                onChange={(e) => setCreateCustomerId(e.target.value)}
+                placeholder="-- Chọn khách hàng --"
+                options={allCustomers.map((c) => ({ value: c.customerId, label: c.customerName }))}
+              />
+            </div>
+            <Button disabled={!createCustomerId} onClick={() => setIsCreateModalOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Tạo báo giá mới
+            </Button>
+          </div>
         )}
       </div>
 
@@ -305,7 +300,7 @@ export default function Page() {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Tìm theo mã báo giá, mã đơn, khách hàng..."
+              placeholder="Tìm theo mã báo giá, khách hàng..."
               className="w-full rounded-md border border-slate-200 bg-white py-2 pl-8 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -313,14 +308,19 @@ export default function Page() {
             <Select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              options={[{ value: '', label: 'Tất cả trạng thái' }, { value: 'draft', label: 'Nháp' }, { value: 'confirmed', label: 'Đã duyệt' }]}
+              options={[
+                { value: '', label: 'Tất cả trạng thái' },
+                { value: 'DRAFT', label: 'Nháp' },
+                { value: 'APPROVED', label: 'Đã duyệt' },
+                { value: 'REJECTED', label: 'Từ chối' },
+              ]}
             />
           </div>
         </div>
 
         <p className="mt-3 text-xs italic text-slate-400">
-          Đã tải báo giá từ {ordersLoaded}/{ordersTotalCount ?? '…'} đơn hàng. Tìm kiếm/lọc chỉ áp dụng trong phạm vi đã tải — nhấn &quot;Tải thêm
-          đơn hàng&quot; để mở rộng phạm vi.
+          Đã tải báo giá từ {customersLoaded}/{customersTotalCount ?? '…'} khách hàng. Tìm kiếm/lọc chỉ áp dụng trong phạm vi đã tải — nhấn &quot;Tải
+          thêm khách hàng&quot; để mở rộng phạm vi.
         </p>
       </motion.div>
 
@@ -329,11 +329,13 @@ export default function Page() {
           <Table columns={columns} rows={filteredRows} rowKey={(row) => row.quotation.quotationId} isLoading={isInitialLoading} />
         </div>
 
-        {hasMoreOrders && (
+        {loadError && <p className="mt-4 text-center text-sm text-red-600">{loadError}</p>}
+
+        {hasMoreCustomers && (
           <div className="mt-4 flex justify-center">
             <Button variant="secondary" onClick={handleLoadMore} isLoading={isLoadingMore}>
               {!isLoadingMore && <Loader2 className="h-4 w-4" />}
-              Tải thêm đơn hàng ({ordersLoaded}/{ordersTotalCount})
+              Tải thêm khách hàng ({customersLoaded}/{customersTotalCount})
             </Button>
           </div>
         )}
@@ -341,16 +343,17 @@ export default function Page() {
 
       <CreateQuotationModal
         isOpen={isCreateModalOpen}
+        customerId={createCustomerId}
         onClose={() => setIsCreateModalOpen(false)}
         onSuccess={handleQuotationCreated}
       />
       <CreateQuotationModal
         isOpen={Boolean(editingQuotation)}
-        orderId={editingOrder?.orderId ?? ''}
+        customerId={editingCustomer?.customerId ?? ''}
         editingQuotation={editingQuotation}
         onClose={() => {
           setEditingQuotation(null);
-          setEditingOrder(null);
+          setEditingCustomer(null);
         }}
         onSuccess={handleQuotationEdited}
       />

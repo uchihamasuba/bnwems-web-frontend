@@ -69,7 +69,10 @@ export default function CancelOrderModal({
     setIsSubmitting(true);
     setError(null);
     try {
-      await orderApiService.cancelOrder(order.orderId, { reason: reason.trim() });
+      await orderApiService.updateOrderStatus(order.orderId, {
+        orderStatus: 'CANCELLED',
+        cancelReason: reason.trim(),
+      });
       onSuccess();
       resetAndClose();
     } catch {
@@ -99,8 +102,9 @@ export default function CancelOrderModal({
         <div className="flex gap-2 rounded-lg bg-red-50 p-3 text-xs font-medium leading-relaxed text-red-600">
           <AlertTriangle className="h-4 w-4 flex-shrink-0" />
           <span>
-            Việc hủy bỏ đơn hàng sẽ tự động giải phóng toàn bộ lịch khảo sát, thi công của nhân sự và hoàn lại thiết bị
-            giữ chỗ về kho tổng. Vui lòng kiểm tra lại chính sách hoàn cọc trước khi xác nhận.
+            Hệ thống chỉ đổi trạng thái đơn hàng sang &quot;Đã hủy&quot; — KHÔNG tự động giải phóng lịch
+            khảo sát/thi công hay hoàn thiết bị về kho. Manager cần tự xử lý các phần này thủ công sau khi
+            hủy đơn.
           </span>
         </div>
 

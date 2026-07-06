@@ -2,39 +2,39 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, ClipboardList, ListChecks, Loader2, CircleDashed } from 'lucide-react';
-import { workTaskApiService } from '@/services/workTask.service';
+import { schedulePlanApiService } from '@/services/schedulePlan.service';
 import { orderApiService } from '@/services/order.service';
 import { customerApiService } from '@/services/customer.service';
 import DashboardStats, { KpiCardItem } from '@/components/reports/DashboardStats';
 import CreateTaskModal from '@/components/schedule/CreateTaskModal';
 import TaskKanbanBoard from '@/components/schedule/TaskKanbanBoard';
-import type { WorkTask } from '@/types/workTask';
+import type { SchedulePlan } from '@/types/schedulePlan';
 import type { Order } from '@/types/order';
 import type { Customer } from '@/types/customer';
 
 async function loadBoardData() {
-  const [tasksRes, ordersRes, customersRes] = await Promise.all([
-    workTaskApiService.getTasks({ limit: 200 }),
+  const [plansRes, ordersRes, customersRes] = await Promise.all([
+    schedulePlanApiService.getSchedulePlans({ limit: 200 }),
     orderApiService.getOrders({ limit: 200 }),
     customerApiService.getCustomers({ limit: 200 }),
   ]);
   return {
-    tasks: (tasksRes.data ?? []) as WorkTask[],
+    plans: (plansRes.data ?? []) as SchedulePlan[],
     orders: (ordersRes.data ?? []) as Order[],
     customers: (customersRes.data ?? []) as Customer[],
   };
 }
 
 export default function Page() {
-  const [tasks, setTasks] = useState<WorkTask[]>([]);
+  const [plans, setPlans] = useState<SchedulePlan[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   const refresh = () =>
-    loadBoardData().then(({ tasks: t, orders: o, customers: c }) => {
-      setTasks(t);
+    loadBoardData().then(({ plans: p, orders: o, customers: c }) => {
+      setPlans(p);
       setOrders(o);
       setCustomers(c);
     });
@@ -49,10 +49,10 @@ export default function Page() {
   const customerById = useMemo(() => new Map(customers.map((c) => [c.customerId, c])), [customers]);
 
   const kpiItems: KpiCardItem[] = [
-    { label: 'Tổng công việc', value: tasks.length, icon: ClipboardList, iconColor: 'blue' },
-    { label: 'Nháp', value: tasks.filter((t) => t.status === 'draft').length, icon: CircleDashed, iconColor: 'amber' },
-    { label: 'Đang thực hiện', value: tasks.filter((t) => t.status === 'in_progress').length, icon: Loader2, iconColor: 'blue' },
-    { label: 'Hoàn thành', value: tasks.filter((t) => t.status === 'done').length, icon: ListChecks, iconColor: 'green' },
+    { label: 'Tổng kế hoạch', value: plans.length, icon: ClipboardList, iconColor: 'blue' },
+    { label: 'Chờ xử lý', value: plans.filter((p) => p.status === 'PENDING').length, icon: CircleDashed, iconColor: 'amber' },
+    { label: 'Đang thực hiện', value: plans.filter((p) => p.status === 'IN_PROGRESS').length, icon: Loader2, iconColor: 'blue' },
+    { label: 'Hoàn thành', value: plans.filter((p) => p.status === 'COMPLETED').length, icon: ListChecks, iconColor: 'green' },
   ];
 
   return (
@@ -80,7 +80,7 @@ export default function Page() {
         <p className="mt-6 text-sm text-slate-400">Đang tải...</p>
       ) : (
         <div className="mt-6">
-          <TaskKanbanBoard tasks={tasks} orderById={orderById} customerById={customerById} onRefresh={refresh} />
+          <TaskKanbanBoard plans={plans} orderById={orderById} customerById={customerById} onRefresh={refresh} />
         </div>
       )}
 

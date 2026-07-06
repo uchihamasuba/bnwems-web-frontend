@@ -6,9 +6,8 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ChevronRight, Printer, Check, Pencil, Trash2 } from 'lucide-react';
 import { quotationApiService } from '@/services/quotation.service';
-import { orderApiService } from '@/services/order.service';
 import { customerApiService } from '@/services/customer.service';
-import { equipmentApiService } from '@/services/equipment.service';
+import { catalogApiService } from '@/services/catalog.service';
 import { Badge, getStatusBadgeVariant } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
@@ -19,18 +18,17 @@ import { formatCurrency, formatCurrencyInWords } from '@/utils/formatCurrency';
 import { formatDate, formatTime } from '@/utils/formatDate';
 import { usePermission } from '@/hooks/usePermission';
 import type { Quotation, QuotationDetail } from '@/types/quotation';
-import type { OrderDetail } from '@/types/order';
 import type { Customer } from '@/types/customer';
-import type { EquipmentItem } from '@/types/equipment';
 
 const STATUS_LABEL: Record<Quotation['status'], string> = {
-  draft: 'Nháp',
-  confirmed: 'Đã duyệt',
+  DRAFT: 'Nháp',
+  APPROVED: 'Đã duyệt',
+  REJECTED: 'Từ chối',
 };
 
-interface EquipmentInfo {
+interface ItemInfo {
   name: string;
-  unit: string | null;
+  unit: string;
 }
 
 export default function Page() {
@@ -40,10 +38,9 @@ export default function Page() {
   const canManage = can('orders:manage');
 
   const [detail, setDetail] = useState<QuotationDetail | null>(null);
-  const [order, setOrder] = useState<OrderDetail | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [versions, setVersions] = useState<Quotation[]>([]);
-  const [equipmentById, setEquipmentById] = useState<Map<string, EquipmentInfo>>(new Map());
+  const [itemById, setItemById] = useState<Map<string, ItemInfo>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
@@ -63,12 +60,10 @@ export default function Page() {
       .then(async (res) => {
         const d: QuotationDetail = res.data;
         setDetail(d);
-        const [orderRes, customerRes, versionsRes] = await Promise.all([
-          orderApiService.getOrder(d.orderId),
+        const [customerRes, versionsRes] = await Promise.all([
           customerApiService.getCustomer(d.customerId),
-          quotationApiService.getOrderQuotations(d.orderId, { limit: 50 }),
+          quotationApiService.getCustomerQuotations(d.customerId, { limit: 50 }),
         ]);
-        setOrder(orderRes.data);
         setCustomer(customerRes.data);
         setVersions(versionsRes.data ?? []);
       })
@@ -77,15 +72,15 @@ export default function Page() {
   }, [id]);
 
   useEffect(() => {
-    equipmentApiService.getEquipments({ limit: 200 }).then((res) => {
-      const items: EquipmentItem[] = res.data ?? [];
-      setEquipmentById(new Map(items.map((item) => [item.equipmentItemId, { name: item.name, unit: item.unit }])));
+    catalogApiService.getItems({ limit: 200 }).then((res) => {
+      const items: { itemId: string; itemName: string; unit: string }[] = res.data ?? [];
+      setItemById(new Map(items.map((item) => [item.itemId, { name: item.itemName, unit: item.unit }])));
     });
   }, []);
 
   const totals = useMemo(() => {
     if (!detail) return null;
-    return { subtotal: detail.subtotal, tax: detail.tax, discount: detail.discount, totalAmount: detail.totalAmount };
+    return { subtotal: detail.subtotal, discountTotal: detail.discountTotal, totalAmount: detail.totalAmount };
   }, [detail]);
 
   const handleEditSuccess = async () => {
@@ -101,7 +96,7 @@ export default function Page() {
     setIsConfirming(true);
     setConfirmError(null);
     try {
-      await quotationApiService.confirmQuotation(id);
+      await quotationApiService.updateQuotationStatus(id, { status: 'APPROVED' });
       const res = await quotationApiService.getQuotation(id);
       setDetail(res.data);
       setIsConfirmModalOpen(false);
@@ -120,7 +115,7 @@ export default function Page() {
     );
   }
 
-  if (notFound || !detail || !order || !customer) {
+  if (notFound || !detail || !customer) {
     return (
       <div className="p-6">
         <p className="text-sm text-red-500">Không tìm thấy báo giá này.</p>
@@ -140,7 +135,7 @@ export default function Page() {
             Báo giá
           </Link>
           <ChevronRight className="h-3.5 w-3.5" />
-          <span className="font-semibold text-slate-900">#{detail.quotationId}</span>
+          <span className="font-semibold text-slate-900">{detail.quotationCode}</span>
         </nav>
         <Link href="/manager/quotations" className="flex items-center gap-1 text-sm font-semibold text-blue-600 hover:underline">
           <ArrowLeft className="h-4 w-4" />
@@ -165,7 +160,7 @@ export default function Page() {
             </div>
             <div className="text-left font-medium sm:text-right">
               <p className="text-slate-800">
-                <span className="text-slate-400">Mã báo giá:</span> <strong className="text-slate-950">#{detail.quotationId}</strong>
+                <span className="text-slate-400">Mã báo giá:</span> <strong className="text-slate-950">{detail.quotationCode}</strong>
               </p>
               <p className="mt-0.5 text-slate-400">
                 Ngày tạo: <span className="font-semibold text-slate-700">{formatDate(detail.createdAt)}</span>
@@ -182,23 +177,11 @@ export default function Page() {
           <div className="space-y-3 text-xs text-slate-800">
             <div className="flex items-end gap-1.5">
               <span className="whitespace-nowrap text-slate-400">Tên khách hàng:</span>
-              <span className="flex-1 border-b border-dotted border-slate-300 pb-0.5 font-bold text-slate-900">{customer.fullName}</span>
+              <span className="flex-1 border-b border-dotted border-slate-300 pb-0.5 font-bold text-slate-900">{customer.customerName}</span>
             </div>
             <div className="flex items-end gap-1.5">
               <span className="whitespace-nowrap text-slate-400">Địa chỉ:</span>
               <span className="flex-1 border-b border-dotted border-slate-300 pb-0.5 font-semibold text-slate-800">{customer.address || '—'}</span>
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="flex items-end gap-1.5">
-                <span className="whitespace-nowrap text-slate-400">Loại sự kiện:</span>
-                <span className={`flex-1 border-b border-dotted border-slate-300 pb-0.5 font-semibold ${order.eventType ? 'text-slate-800' : 'italic text-slate-400'}`}>
-                  {order.eventType ?? 'Chưa cập nhật'}
-                </span>
-              </div>
-              <div className="flex items-end gap-1.5">
-                <span className="whitespace-nowrap text-slate-400">Ngày tổ chức:</span>
-                <span className="flex-1 border-b border-dotted border-slate-300 pb-0.5 font-semibold text-slate-800">{formatDate(order.eventDate)}</span>
-              </div>
             </div>
           </div>
 
@@ -216,17 +199,19 @@ export default function Page() {
               </thead>
               <tbody className="divide-y divide-slate-200 text-xs text-slate-800">
                 {detail.items.map((item, index) => {
-                  const equipment = equipmentById.get(item.equipmentItemId);
+                  const itemInfo = itemById.get(item.itemId);
                   return (
-                    <tr key={item.id}>
+                    <tr key={item.quotationItemId ?? `${item.itemId}-${index}`}>
                       <td className="px-3 py-3 text-center font-medium text-slate-400">{index + 1}</td>
                       <td className="px-3 py-3 font-semibold leading-snug text-slate-950">
-                        {equipment?.name ?? `#${item.equipmentItemId}`}
+                        {itemInfo?.name ?? item.itemName ?? `#${item.itemId}`}
                       </td>
-                      <td className="px-3 py-3 text-center font-medium text-slate-500">{equipment?.unit ?? 'bộ'}</td>
+                      <td className="px-3 py-3 text-center font-medium text-slate-500">{itemInfo?.unit ?? 'bộ'}</td>
                       <td className="px-3 py-3 text-center font-bold text-slate-900">{item.quantity}</td>
-                      <td className="px-3 py-3 text-right font-semibold text-slate-600">{formatCurrency(item.unitPrice)}</td>
-                      <td className="px-3 py-3 text-right font-extrabold text-slate-950">{formatCurrency(item.lineTotal)}</td>
+                      <td className="px-3 py-3 text-right font-semibold text-slate-600">{formatCurrency(item.price)}</td>
+                      <td className="px-3 py-3 text-right font-extrabold text-slate-950">
+                        {formatCurrency(item.lineTotal ?? item.quantity * item.price - (item.discount ?? 0))}
+                      </td>
                     </tr>
                   );
                 })}
@@ -241,15 +226,9 @@ export default function Page() {
                   <span className="text-slate-500">Tổng tiền hàng:</span>
                   <span className="font-bold text-slate-950">{formatCurrency(totals.subtotal)}</span>
                 </div>
-                {totals.tax > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Thuế:</span>
-                    <span className="font-bold text-slate-950">{formatCurrency(totals.tax)}</span>
-                  </div>
-                )}
                 <div className="flex justify-between text-rose-600">
                   <span className="text-slate-500">Giảm giá:</span>
-                  <span className="font-bold">-{formatCurrency(totals.discount)}</span>
+                  <span className="font-bold">-{formatCurrency(totals.discountTotal)}</span>
                 </div>
                 <div className="my-1 border-b-2 border-slate-800" />
                 <div className="flex justify-between pt-1 text-sm font-black text-slate-950">
@@ -295,7 +274,7 @@ export default function Page() {
           <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Trạng thái báo giá</h3>
             <div className="flex items-center gap-2">
-              <Badge variant={getStatusBadgeVariant(detail.status.toUpperCase())}>{STATUS_LABEL[detail.status]}</Badge>
+              <Badge variant={getStatusBadgeVariant(detail.status)}>{STATUS_LABEL[detail.status]}</Badge>
             </div>
 
             {versions.length > 1 ? (
@@ -311,9 +290,9 @@ export default function Page() {
 
             <div className="space-y-2.5 border-t border-slate-100 pt-3 text-xs font-medium text-slate-600">
               <div className="flex justify-between">
-                <span className="text-slate-400">Đơn hàng:</span>
-                <Link href={`/manager/orders/${order.orderId}`} className="font-semibold text-blue-600 hover:underline">
-                  #{order.orderId}
+                <span className="text-slate-400">Khách hàng:</span>
+                <Link href={`/manager/customers/${customer.customerId}`} className="font-semibold text-blue-600 hover:underline">
+                  {customer.customerName}
                 </Link>
               </div>
               <div className="flex justify-between">
@@ -334,7 +313,7 @@ export default function Page() {
               </div>
               <div className="flex justify-between text-rose-600">
                 <span className="text-slate-400">Giảm giá:</span>
-                <span className="font-bold">-{formatCurrency(detail.discount)}</span>
+                <span className="font-bold">-{formatCurrency(detail.discountTotal)}</span>
               </div>
               <div className="flex items-center justify-between border-t border-slate-100 pt-3">
                 <span className="text-xs font-bold text-slate-500">Thành tiền:</span>
@@ -348,19 +327,19 @@ export default function Page() {
               <Printer className="h-4 w-4" />
               In / Xuất PDF
             </Button>
-            {canManage && detail.status === 'draft' && (
+            {canManage && detail.status === 'DRAFT' && (
               <Button className="w-full" variant="secondary" onClick={() => setIsEditModalOpen(true)}>
                 <Pencil className="h-4 w-4" />
                 Sửa báo giá
               </Button>
             )}
-            {canManage && detail.status === 'draft' && (
+            {canManage && detail.status === 'DRAFT' && (
               <Button className="w-full" variant="secondary" onClick={() => setIsConfirmModalOpen(true)}>
                 <Check className="h-4 w-4" />
                 Xác nhận & duyệt báo giá
               </Button>
             )}
-            {canManage && detail.status === 'draft' && (
+            {canManage && detail.status === 'DRAFT' && (
               <Button className="w-full" variant="danger" onClick={() => setIsDeleteModalOpen(true)}>
                 <Trash2 className="h-4 w-4" />
                 Xóa báo giá
@@ -412,8 +391,8 @@ export default function Page() {
       >
         <div className="space-y-3 text-sm">
           <p className="text-slate-600">
-            Duyệt báo giá <strong>#{detail.quotationId}</strong> (phiên bản {detail.version}) với tổng tiền{' '}
-            <strong>{formatCurrency(detail.totalAmount)}</strong> cho đơn hàng <strong>#{order.orderId}</strong>?
+            Duyệt báo giá <strong>{detail.quotationCode}</strong> (phiên bản {detail.version}) với tổng tiền{' '}
+            <strong>{formatCurrency(detail.totalAmount)}</strong> cho khách hàng <strong>{customer.customerName}</strong>?
           </p>
           {confirmError && <p className="text-sm text-red-600">{confirmError}</p>}
         </div>
@@ -421,7 +400,7 @@ export default function Page() {
 
       <CreateQuotationModal
         isOpen={isEditModalOpen}
-        orderId={detail.orderId}
+        customerId={detail.customerId}
         editingQuotation={detail}
         onClose={() => setIsEditModalOpen(false)}
         onSuccess={handleEditSuccess}

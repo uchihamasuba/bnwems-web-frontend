@@ -2,19 +2,45 @@ import api from './api';
 import type {
   CreateSupplierTransactionPayload,
   GetSupplierTransactionsQuery,
-  SupplierTransaction,
+  ReceiveSupplierTransactionPayload,
+  UpdateSupplierTransactionPaymentStatusPayload,
+  UpdateSupplierTransactionStatusPayload,
 } from '@/types/procurement';
 
 export const procurementApiService = {
-  /** GET /api/v1/supplier-transactions (UC 2.16) */
+  /** GET /api/v1/supplier-transactions */
   async getTransactions(params?: GetSupplierTransactionsQuery) {
     const response = await api.get('/supplier-transactions', { params });
-    return response.data as { success: boolean; data: SupplierTransaction[]; meta: { totalCount: number } };
+    return response.data;
   },
 
-  /** POST /api/v1/supplier-transactions (UC 2.16) */
+  /** GET /api/v1/supplier-transactions/:id */
+  async getTransactionById(id: string) {
+    const response = await api.get(`/supplier-transactions/${id}`);
+    return response.data;
+  },
+
+  /** POST /api/v1/supplier-transactions */
   async createTransaction(payload: CreateSupplierTransactionPayload) {
     const response = await api.post('/supplier-transactions', payload);
+    return response.data;
+  },
+
+  /** PATCH /api/v1/supplier-transactions/:id/status */
+  async updateTransactionStatus(id: string, payload: UpdateSupplierTransactionStatusPayload) {
+    const response = await api.patch(`/supplier-transactions/${id}/status`, payload);
+    return response.data;
+  },
+
+  /** PATCH /api/v1/supplier-transactions/:id/payment-status */
+  async updateTransactionPaymentStatus(id: string, payload: UpdateSupplierTransactionPaymentStatusPayload) {
+    const response = await api.patch(`/supplier-transactions/${id}/payment-status`, payload);
+    return response.data;
+  },
+
+  /** POST /api/v1/supplier-transactions/:id/receive */
+  async receiveTransaction(id: string, payload: ReceiveSupplierTransactionPayload) {
+    const response = await api.post(`/supplier-transactions/${id}/receive`, payload);
     return response.data;
   },
 };

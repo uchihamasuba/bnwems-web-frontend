@@ -4,12 +4,21 @@ import { Badge } from '@/components/ui/Badge';
 import { formatDate, formatTime } from '@/utils/formatDate';
 import type { SurveyReport } from '@/types/survey';
 
+const STATUS_LABEL: Record<SurveyReport['status'], string> = {
+  DRAFT: 'NHÁP',
+  NEEDS_REVIEW: 'CẦN XEM XÉT',
+  SUBMITTED: 'ĐÃ NỘP',
+  CONFIRMED: 'ĐÃ XÁC NHẬN',
+};
+
 interface SurveyResultCardProps {
   report: SurveyReport | null;
   surveyorName?: string;
   isLoading: boolean;
 }
 
+// GET /survey-reports/:id không trả tên người khảo sát (chỉ có reportedBy id) — dùng surveyorName
+// suy từ SchedulePlan.assigneeName (tên nhân sự được phân công khảo sát) làm fallback hiển thị.
 export default function SurveyResultCard({ report, surveyorName, isLoading }: Readonly<SurveyResultCardProps>) {
   return (
     <AnalyticsCard title="Kết quả khảo sát">
@@ -21,33 +30,34 @@ export default function SurveyResultCard({ report, surveyorName, isLoading }: Re
         <div className="space-y-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <Avatar name={report.surveyedBy?.fullName ?? surveyorName ?? 'KSV'} size="md" />
+              <Avatar name={surveyorName ?? 'KSV'} size="md" />
               <div>
-                <p className="text-sm font-semibold text-slate-900">{report.surveyedBy?.fullName ?? surveyorName ?? 'Khảo sát viên'}</p>
+                <p className="text-sm font-semibold text-slate-900">{surveyorName ?? 'Khảo sát viên'}</p>
                 <p className="text-xs text-slate-400">
-                  Khảo sát lúc {formatTime(report.submittedAt)} - {formatDate(report.submittedAt)}
+                  Khảo sát lúc {formatTime(report.surveyDate)} - {formatDate(report.surveyDate)}
                 </p>
               </div>
             </div>
-            <Badge variant="success">ĐÃ NỘP</Badge>
+            <Badge variant="success">{STATUS_LABEL[report.status]}</Badge>
           </div>
 
           <div>
-            <p className="mb-1 text-xs font-bold uppercase text-slate-400">Ghi chú kỹ thuật</p>
-            <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{report.notes}</p>
+            <p className="mb-1 text-xs font-bold uppercase text-slate-400">Địa điểm</p>
+            <p className="text-sm text-slate-700">{report.location}</p>
           </div>
 
-          {report.evidences.length > 0 && (
-            <div className="grid grid-cols-4 gap-2">
-              {report.evidences.map((ev, idx) => (
-                // eslint-disable-next-line @next/next/no-img-element -- ảnh minh chứng từ URL ngoài, không dùng next/image để tránh cấu hình remotePatterns
-                <img
-                  key={ev.fileUrl + idx}
-                  src={ev.fileUrl}
-                  alt={`Ảnh khảo sát ${idx + 1}`}
-                  className="h-20 w-full rounded-lg object-cover"
-                />
-              ))}
+          {report.notes && (
+            <div>
+              <p className="mb-1 text-xs font-bold uppercase text-slate-400">Ghi chú kỹ thuật</p>
+              <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{report.notes}</p>
+            </div>
+          )}
+
+          {report.evidence && (
+            <div>
+              <p className="mb-1 text-xs font-bold uppercase text-slate-400">Ảnh hiện trường</p>
+              {/* eslint-disable-next-line @next/next/no-img-element -- ảnh minh chứng từ URL ngoài, không dùng next/image để tránh cấu hình remotePatterns */}
+              <img src={report.evidence.fileUrl} alt="Ảnh khảo sát" className="h-32 w-full rounded-lg object-cover" />
             </div>
           )}
         </div>

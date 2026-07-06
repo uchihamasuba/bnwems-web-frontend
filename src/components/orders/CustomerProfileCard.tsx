@@ -11,9 +11,9 @@ export default function CustomerProfileCard({ customer }: Readonly<CustomerProfi
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
       <div className="mb-4 flex justify-center">
-        <Avatar name={customer.fullName} size="lg" />
+        <Avatar name={customer.customerName} size="lg" />
       </div>
-      <h3 className="text-lg font-bold text-slate-900">{customer.fullName}</h3>
+      <h3 className="text-lg font-bold text-slate-900">{customer.customerName}</h3>
 
       <div className="mt-6 space-y-4 border-t border-slate-100 pt-6 text-left">
         <div className="flex items-center gap-3">

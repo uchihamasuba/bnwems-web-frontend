@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Clock, MapPin } from 'lucide-react';
-import { TASK_STATUS_LABEL } from '@/constants/work-task';
-import type { Schedule } from '@/types/schedulePlan';
+import { SCHEDULE_STATUS_LABEL } from '@/constants/work-task';
+import type { SchedulePlan } from '@/types/schedulePlan';
 import type { Order } from '@/types/order';
 import type { Customer } from '@/types/customer';
 
@@ -39,8 +39,8 @@ function dayNumberClass(isSelected: boolean, isToday: boolean): string {
 }
 
 function cardClassFor(status: string): string {
-  if (status === 'done') return 'border-emerald-200 bg-emerald-50/90 text-emerald-900 hover:bg-emerald-50';
-  if (status === 'in_progress') return 'border-blue-200 bg-blue-50/90 text-blue-900 hover:bg-blue-50';
+  if (status === 'COMPLETED') return 'border-emerald-200 bg-emerald-50/90 text-emerald-900 hover:bg-emerald-50';
+  if (status === 'IN_PROGRESS') return 'border-blue-200 bg-blue-50/90 text-blue-900 hover:bg-blue-50';
   return 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50';
 }
 
@@ -49,7 +49,7 @@ export interface WeekViewProps {
   onAnchorDateChange: (date: Date) => void;
   selectedDate: Date;
   onSelectedDateChange: (date: Date) => void;
-  schedules: Schedule[];
+  schedules: SchedulePlan[];
   orderById: Map<string, Order>;
   customerById: Map<string, Customer>;
 }
@@ -70,9 +70,9 @@ export default function WeekView({
   });
   const today = new Date();
 
-  // Lọc schedule có scheduledStart trong khung giờ hiển thị (06:00 – 20:00)
+  // Lọc plan có startTime trong khung giờ hiển thị (06:00 – 20:00)
   const schedulesInWindow = schedules.filter((s) => {
-    const d = new Date(s.scheduledStart);
+    const d = new Date(s.startTime);
     const hour = d.getHours() + d.getMinutes() / 60;
     return hour >= HOUR_START && hour <= HOUR_END;
   });
@@ -195,13 +195,13 @@ export default function WeekView({
             <div />
             {days.map((day) => {
               const daySchedules = schedulesInWindow.filter((s) =>
-                isSameDay(new Date(s.scheduledStart), day),
+                isSameDay(new Date(s.startTime), day),
               );
               return (
                 <div key={day.toISOString()} className="relative">
                   {daySchedules.map((schedule) => {
-                    const start = new Date(schedule.scheduledStart);
-                    const end = new Date(schedule.scheduledEnd);
+                    const start = new Date(schedule.startTime);
+                    const end = schedule.endTime ? new Date(schedule.endTime) : new Date(start.getTime() + 3_600_000);
                     const hourDecimal = start.getHours() + start.getMinutes() / 60;
                     const top = (hourDecimal - HOUR_START) * HOUR_HEIGHT;
                     // Tính chiều cao theo khoảng thời gian (min 1h, max 4h)
@@ -214,17 +214,17 @@ export default function WeekView({
                     const customer = order ? customerById.get(order.customerId) : undefined;
                     return (
                       <Link
-                        key={schedule.id}
+                        key={schedule.planId}
                         href={`/manager/orders/${schedule.orderId}`}
                         className={`absolute left-1 right-1 flex flex-col justify-between overflow-hidden rounded-lg border p-2 text-left shadow-2xs transition-colors ${cardClassFor(schedule.status)}`}
                         style={{ top: `${top}px`, height: `${height}px` }}
                       >
                         <div>
                           <span className="mb-1 block truncate text-[10px] font-black uppercase tracking-wide opacity-70">
-                            {TASK_STATUS_LABEL[schedule.status] ?? schedule.status}
+                            {SCHEDULE_STATUS_LABEL[schedule.status] ?? schedule.status}
                           </span>
                           <p className="truncate text-xs font-extrabold leading-tight">
-                            {schedule.activityType}
+                            {schedule.taskName ?? `Task #${schedule.taskId}`}
                           </p>
                         </div>
                         <div className="mt-1 space-y-0.5 text-[10px] font-bold opacity-80">
@@ -237,7 +237,7 @@ export default function WeekView({
                           </span>
                           <span className="flex items-center gap-1 truncate">
                             <MapPin className="h-3 w-3 flex-shrink-0" />
-                            {schedule.location ?? customer?.fullName ?? `#${schedule.orderId}`}
+                            {schedule.location ?? customer?.customerName ?? `#${schedule.orderId}`}
                           </span>
                         </div>
                       </Link>

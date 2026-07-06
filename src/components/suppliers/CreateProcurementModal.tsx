@@ -9,10 +9,11 @@ import { procurementApiService } from '@/services/procurement.service';
 import { formatCurrency } from '@/utils/formatCurrency';
 import type { Supplier } from '@/types/supplier';
 import type { Order } from '@/types/order';
+import type { SupplierTransactionType } from '@/types/procurement';
 
 const TRANSACTION_TYPE_OPTIONS = [
-  { value: 'purchase', label: 'Mua hàng' },
-  { value: 'rental', label: 'Thuê ngoài' },
+  { value: 'PURCHASE', label: 'Mua hàng' },
+  { value: 'RENTAL', label: 'Thuê ngoài' },
 ];
 
 interface CreateProcurementModalProps {
@@ -23,18 +24,16 @@ interface CreateProcurementModalProps {
   onSuccess: () => void;
 }
 
-export default function CreateProcurementModal({
-  isOpen,
-  suppliers,
-  orders,
-  onClose,
-  onSuccess,
-}: Readonly<CreateProcurementModalProps>) {
+// estimatedCost giờ tự tính server-side từ items[].unitCost * quantity (không nhận trực tiếp qua
+// body) — form thu thập 1 hạng mục (itemName/quantity/unitCost) thay vì tổng chi phí nhập tay.
+export default function CreateProcurementModal({ isOpen, suppliers, orders, onClose, onSuccess }: Readonly<CreateProcurementModalProps>) {
   const [supplierId, setSupplierId] = useState('');
   const [orderId, setOrderId] = useState('');
-  const [transactionType, setTransactionType] = useState<'purchase' | 'rental'>('purchase');
-  const [itemDescription, setItemDescription] = useState('');
-  const [totalCost, setTotalCost] = useState('');
+  const [transactionType, setTransactionType] = useState<SupplierTransactionType>('PURCHASE');
+  const [serviceTitle, setServiceTitle] = useState('');
+  const [itemName, setItemName] = useState('');
+  const [quantity, setQuantity] = useState('1');
+  const [unitCost, setUnitCost] = useState('');
   const [depositAmount, setDepositAmount] = useState('');
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -45,9 +44,11 @@ export default function CreateProcurementModal({
     if (!isOpen) return;
     setSupplierId('');
     setOrderId('');
-    setTransactionType('purchase');
-    setItemDescription('');
-    setTotalCost('');
+    setTransactionType('PURCHASE');
+    setServiceTitle('');
+    setItemName('');
+    setQuantity('1');
+    setUnitCost('');
     setDepositAmount('');
     setErrors({});
     setSubmitError(null);
@@ -55,22 +56,23 @@ export default function CreateProcurementModal({
 
   const supplierOptions = [
     { value: '', label: '— Chọn nhà cung cấp —' },
-    ...suppliers
-      .filter((s) => s.status === 'active')
-      .map((s) => ({ value: s.supplierId, label: s.name })),
+    ...suppliers.filter((s) => s.status === 'ACTIVE').map((s) => ({ value: s.supplierId, label: s.supplierName })),
   ];
 
   const orderOptions = [
     { value: '', label: '— Chọn đơn hàng liên kết —' },
-    ...orders.map((o) => ({ value: o.orderId, label: `${o.orderId}` })),
+    ...orders.map((o) => ({ value: o.orderId, label: o.orderCode })),
   ];
+
+  const estimatedCost = (Number(quantity) || 0) * (Number(unitCost) || 0);
 
   const validate = (): Record<string, string> => {
     const errs: Record<string, string> = {};
     if (!supplierId) errs.supplierId = 'Vui lòng chọn nhà cung cấp';
     if (!orderId) errs.orderId = 'Vui lòng chọn đơn hàng';
-    if (!itemDescription.trim()) errs.itemDescription = 'Vui lòng nhập hạng mục mua sắm';
-    if (!totalCost || Number(totalCost) <= 0) errs.totalCost = 'Vui lòng nhập chi phí hợp lệ';
+    if (!serviceTitle.trim()) errs.serviceTitle = 'Vui lòng nhập tên giao dịch';
+    if (!itemName.trim()) errs.itemName = 'Vui lòng nhập hạng mục mua sắm';
+    if (!unitCost || Number(unitCost) <= 0) errs.unitCost = 'Vui lòng nhập đơn giá hợp lệ';
     return errs;
   };
 
@@ -85,9 +87,9 @@ export default function CreateProcurementModal({
         supplierId,
         orderId,
         transactionType,
-        itemDescription,
-        totalCost: Number(totalCost),
+        serviceTitle: serviceTitle.trim(),
         depositAmount: Number(depositAmount || '0'),
+        items: [{ itemName: itemName.trim(), quantity: Number(quantity) || 1, unitCost: Number(unitCost) }],
       });
       onSuccess();
       onClose();
@@ -106,11 +108,7 @@ export default function CreateProcurementModal({
           <label className="mb-1.5 block text-sm font-medium text-gray-700">
             Nhà cung cấp <span className="text-red-500">*</span>
           </label>
-          <Select
-            value={supplierId}
-            onChange={(e) => setSupplierId(e.target.value)}
-            options={supplierOptions}
-          />
+          <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} options={supplierOptions} />
           {errors.supplierId && <p className="mt-1 text-xs text-red-600">{errors.supplierId}</p>}
         </div>
 
@@ -118,67 +116,60 @@ export default function CreateProcurementModal({
           <label className="mb-1.5 block text-sm font-medium text-gray-700">
             Đơn hàng liên kết <span className="text-red-500">*</span>
           </label>
-          <Select
-            value={orderId}
-            onChange={(e) => setOrderId(e.target.value)}
-            options={orderOptions}
-          />
+          <Select value={orderId} onChange={(e) => setOrderId(e.target.value)} options={orderOptions} />
           {errors.orderId && <p className="mt-1 text-xs text-red-600">{errors.orderId}</p>}
         </div>
 
         <div>
           <label className="mb-1.5 block text-sm font-medium text-gray-700">Loại giao dịch</label>
-          <Select
-            value={transactionType}
-            onChange={(e) => setTransactionType(e.target.value as 'purchase' | 'rental')}
-            options={TRANSACTION_TYPE_OPTIONS}
-          />
+          <Select value={transactionType} onChange={(e) => setTransactionType(e.target.value as SupplierTransactionType)} options={TRANSACTION_TYPE_OPTIONS} />
         </div>
+
+        <Input
+          label="Tên giao dịch"
+          required
+          value={serviceTitle}
+          onChange={(e) => setServiceTitle(e.target.value)}
+          placeholder="VD: Thuê hoa tươi trang trí tiệc cưới"
+          error={errors.serviceTitle}
+        />
 
         <Input
           label="Hạng mục mua sắm / Thuê ngoài"
           required
-          value={itemDescription}
-          onChange={(e) => setItemDescription(e.target.value)}
+          value={itemName}
+          onChange={(e) => setItemName(e.target.value)}
           placeholder="VD: Hoa hồng Ecuador Pink Floyd (cành)"
-          error={errors.itemDescription}
+          error={errors.itemName}
         />
 
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Input
-              label="Chi phí ước tính (đ)"
-              required
-              type="number"
-              min={0}
-              value={totalCost}
-              onChange={(e) => setTotalCost(e.target.value)}
-              placeholder="15000000"
-              error={errors.totalCost}
-            />
-            {totalCost && Number(totalCost) > 0 && (
-              <p className="mt-1 text-xs text-slate-500">{formatCurrency(Number(totalCost))}</p>
-            )}
-          </div>
-          <div>
-            <Input
-              label="Chi đặt cọc NCC (đ)"
-              type="number"
-              min={0}
-              value={depositAmount}
-              onChange={(e) => setDepositAmount(e.target.value)}
-              placeholder="4500000"
-            />
-            {depositAmount && Number(depositAmount) > 0 && (
-              <p className="mt-1 text-xs text-slate-500">{formatCurrency(Number(depositAmount))}</p>
-            )}
-          </div>
+          <Input label="Số lượng" type="number" min={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+          <Input
+            label="Đơn giá (đ)"
+            required
+            type="number"
+            min={0}
+            value={unitCost}
+            onChange={(e) => setUnitCost(e.target.value)}
+            placeholder="150000"
+            error={errors.unitCost}
+          />
         </div>
 
+        {estimatedCost > 0 && <p className="text-xs text-slate-500">Chi phí ước tính: {formatCurrency(estimatedCost)}</p>}
+
+        <Input
+          label="Chi đặt cọc NCC (đ)"
+          type="number"
+          min={0}
+          value={depositAmount}
+          onChange={(e) => setDepositAmount(e.target.value)}
+          placeholder="4500000"
+        />
+
         {submitError && (
-          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 ring-1 ring-inset ring-red-200">
-            {submitError}
-          </p>
+          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 ring-1 ring-inset ring-red-200">{submitError}</p>
         )}
 
         <div className="flex justify-end gap-2 pt-2">

@@ -9,7 +9,7 @@ import type { InventoryRow } from '@/types/inventory';
 interface InventoryDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
-  row: (InventoryRow & { itemName: string }) | null;
+  row: InventoryRow | null;
 }
 
 function DetailRow({ label, value }: Readonly<{ label: string; value: ReactNode }>) {
@@ -24,26 +24,20 @@ function DetailRow({ label, value }: Readonly<{ label: string; value: ReactNode 
 export function InventoryDetailModal({ isOpen, onClose, row }: Readonly<InventoryDetailModalProps>) {
   if (!row) return null;
 
-  const totalQuantity =
-    row.availableQuantity + row.reservedQuantity + row.checkedOutQuantity + row.damagedQuantity + row.lostQuantity;
-
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Chi tiết tồn kho">
       <div className="flex flex-col">
-        <DetailRow label="Tên thiết bị" value={row.itemName} />
-        <DetailRow label="Mã thiết bị" value={row.catalogItemId} />
-        <DetailRow label="Mã kho" value={row.warehouseId} />
-        <DetailRow label="Tổng số lượng" value={totalQuantity} />
-        <DetailRow label="Có sẵn" value={row.availableQuantity} />
-        <DetailRow label="Đã giữ chỗ" value={row.reservedQuantity} />
-        <DetailRow label="Đang sử dụng" value={row.checkedOutQuantity} />
-        <DetailRow label="Hỏng" value={row.damagedQuantity} />
-        <DetailRow label="Mất" value={row.lostQuantity} />
+        <DetailRow label="Tên thiết bị" value={row.itemName ?? row.itemId} />
+        <DetailRow label="Mã thiết bị" value={row.itemId} />
+        <DetailRow label="Tổng số lượng" value={row.quantityTotal} />
+        <DetailRow label="Có sẵn" value={row.quantityAvailable} />
+        <DetailRow label="Đã giữ chỗ" value={row.quantityReserved} />
+        <DetailRow label="Hỏng" value={row.quantityDamaged} />
         <DetailRow
           label="Trạng thái"
           value={
-            <Badge variant={getStatusBadgeVariant(row.damagedQuantity > 0 ? 'MAINTENANCE' : 'ACTIVE')}>
-              {row.damagedQuantity > 0 ? 'Có hỏng' : 'Bình thường'}
+            <Badge variant={getStatusBadgeVariant(row.quantityDamaged > 0 ? 'MAINTENANCE' : 'ACTIVE')}>
+              {row.quantityDamaged > 0 ? 'Có hỏng' : 'Bình thường'}
             </Badge>
           }
         />

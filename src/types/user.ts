@@ -1,19 +1,21 @@
-// UC 2.4 (docs/api/02-users-roles.md)
-// Lưu ý: doc mới không còn entity `Role`/endpoint GET /roles riêng — role là enum cố định
-// (ADMIN/MANAGER/LEADER_STAFF/TECHNICAL_STAFF), không gán qua endpoint riêng mà sửa trực
-// tiếp trong PUT /users/:id. Email/phone cũng không còn có trong response của module này.
+// docs/api/02-users-roles.md — ĐÃ LỖI THỜI sau đợt backend refactor 2026-07-06. Role enum raw
+// KHÔNG có hậu tố _STAFF (ADMIN/MANAGER/LEADER/TECHNICAL); GET /auth/profile và login mới map
+// sang dạng hiển thị {roleName} khác (xem types/auth.ts) — 2 định dạng khác nhau cho cùng field.
+// Nguồn: D:\bnwems-backend-api prisma/schema.prisma (enum Role/UserStatus), user.validator.ts,
+// user.service.ts.
 
-export type UserRole = 'Admin' | 'Manager' | 'LEADER_STAFF' | 'TECHNICAL_STAFF';
-export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'LOCKED';
+export type UserRole = 'ADMIN' | 'MANAGER' | 'LEADER' | 'TECHNICAL';
+export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
 
-// GET /api/v1/users
+// GET /api/v1/users — KHÔNG có email/phone/bio/avatarUrl (chỉ có ở GET /auth/profile)
 export interface AdminUser {
-  id: string;
+  userId: string;
   username: string;
   fullName: string;
   role: UserRole;
   status: UserStatus;
   createdAt: string;
+  updatedAt: string;
 }
 
 // POST /api/v1/users
@@ -22,15 +24,23 @@ export interface CreateUserPayload {
   password: string;
   fullName: string;
   role: UserRole;
+  email?: string;
+  phone?: string;
+  bio?: string;
+  avatarUrl?: string;
 }
 
-// PUT /api/v1/users/:id
+// PUT /api/v1/users/:id — tất cả optional
 export interface UpdateUserPayload {
-  fullName: string;
-  role: UserRole;
+  fullName?: string;
+  role?: UserRole;
+  email?: string | null;
+  phone?: string | null;
+  bio?: string | null;
+  avatarUrl?: string | null;
 }
 
-// PUT /api/v1/users/:id/status
+// PATCH /api/v1/users/:id/status
 export interface UpdateUserStatusPayload {
   status: UserStatus;
 }

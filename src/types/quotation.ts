@@ -1,59 +1,51 @@
-// UC 2.10 (docs/api/08-quotations.md)
-// ⚠️ Đã sửa lại theo response thật (xác nhận bằng cách chạy thật + đọc trực tiếp
-// D:\bnwems-backend-api\src\services\quotation.service.ts) — KHÔNG khớp hoàn toàn với
-// docs/api/08-quotations.md:
-// - Field id thật là `quotationId` (Prisma không rename), không phải `id`.
-// - status thật chỉ ghi 'draft'/'confirmed' (chữ thường); 'SENT' chỉ xuất hiện trong 1 điều kiện
-//   kiểm tra ở updateQuotation nhưng không nơi nào thực sự set giá trị này — coi như chưa dùng.
-// - GET /quotations/:id trả `items` ở TOP-LEVEL (không nested trong `details.items`), và field
-//   item thật là `unitPrice` + `lineTotal` có sẵn (không phải `price`).
-// - Item tham chiếu `equipmentItemId` (bảng `Equipment`), KHÔNG phải `catalogItemId` (bảng
-//   `CatalogItem`) — 2 bảng khác nhau, xem docs/more-require.md mục (aa) + src/types/equipment.ts.
-// - Versioning ĐÃ ĐƯỢC TRIỂN KHAI THẬT (rà soát lại 2026-07-04): `getQuotationsByOrder` trả nhiều
-//   bản ghi theo `orderId` (sắp version desc, có phân trang), `version` là cột thật (không còn
-//   hardcode = 1). Xem docs/more-require.md mục (m).
-export type QuotationStatus = 'draft' | 'confirmed';
+// docs/api/08-quotations.md — ĐÃ LỖI THỜI sau đợt backend refactor 2026-07-06. Kiến trúc đổi hẳn:
+// Quotation giờ thuộc CUSTOMER (không thuộc Order). Order chỉ có `quotationId` FK optional, tham
+// chiếu 1 quotation có sẵn để lưu vết — KHÔNG tự copy items từ quotation sang order.
+// Nguồn: D:\bnwems-backend-api prisma/schema.prisma (model Quotation/QuotationItem),
+// customer.route.ts, quotation.route.ts, quotation.validator.ts, quotation.service.ts.
+
+export type QuotationStatus = 'DRAFT' | 'APPROVED' | 'REJECTED';
 
 export interface QuotationItem {
-  id: string;
-  quotationId: string;
-  equipmentItemId: string;
+  quotationItemId?: string;
+  quotationId?: string;
+  itemId: string;
+  itemName?: string; // snapshot lúc tạo, do backend tự tra từ Item rồi lưu lại
   quantity: number;
-  unitPrice: number;
-  lineTotal: number;
+  price: number;
+  discount?: number;
+  lineTotal?: number; // generated column, chỉ có khi đọc lại (GET)
 }
 
-// GET /api/v1/orders/:orderId/quotations — danh sách các phiên bản báo giá của 1 đơn hàng
+// GET /api/v1/customers/:customerId/quotations
 export interface Quotation {
   quotationId: string;
-  orderId: string;
+  quotationCode: string;
   customerId: string;
-  version: number;
-  subtotal: number; // = totalAmount trong thực tế (FE không gửi subtotal/tax/discount riêng khi tạo)
-  tax: number; // luôn = 0 trong thực tế hiện tại
-  discount: number; // luôn = 0 trong thực tế hiện tại
+  version: string; // vd "v1.0" — chuỗi tự do, KHÔNG auto-increment
+  subtotal: number;
+  discountTotal: number;
   totalAmount: number;
   status: QuotationStatus;
+  notes?: string;
+  createdBy: string;
   createdAt: string;
-}
-
-// GET /api/v1/quotations/:id
-export interface QuotationDetail extends Quotation {
-  items: QuotationItem[];
   updatedAt: string;
 }
 
-// POST /api/v1/orders/:orderId/quotations, PUT /api/v1/quotations/:id
-// ⚠️ Xác nhận bằng cách gọi POST thật (không chỉ đọc doc): backend validator
-// (createQuotationSchema, D:\bnwems-backend-api\src\validators\quotation.validator.ts) bắt buộc
-// `subtotal` là number required — thiếu field này trả 400 "body.subtotal: Invalid input: expected
-// number, received undefined". `tax`/`discount` vẫn optional (service tự mặc định 0 nếu bỏ trống).
-// ⚠️ `updateQuotation` LUÔN ghi đè tax = data.tax || 0 (quotation.service.ts:114) — không có field
-// nào bị bỏ trống thì giữ nguyên giá trị cũ, nên FE phải luôn gửi lại đúng `tax` mong muốn mỗi lần
-// sửa, không chỉ gửi khi có thay đổi.
+// GET /api/v1/quotations/:id — kèm include items
+export interface QuotationDetail extends Quotation {
+  items: QuotationItem[];
+}
+
+// POST /api/v1/customers/:customerId/quotations, PUT /api/v1/quotations/:id
 export interface SaveQuotationPayload {
-  subtotal: number;
-  tax?: number;
-  totalAmount: number;
-  items: { equipmentItemId: string; quantity: number; unitPrice: number }[];
+  version?: string; // bắt buộc khi tạo mới, không dùng khi update
+  notes?: string;
+  items: { itemId: string; quantity: number; price: number; discount?: number }[]; // tối thiểu 1
+}
+
+// PATCH /api/v1/quotations/:id/status
+export interface UpdateQuotationStatusPayload {
+  status: QuotationStatus;
 }

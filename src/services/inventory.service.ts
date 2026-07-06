@@ -1,61 +1,35 @@
 import api from './api';
-import type {
-  CheckoutInventoryRequest,
-  CreateInventoryRequest,
-  GetInventoryAvailabilityQuery,
-  GetInventoryQuery,
-  GetWarehouseHistoriesQuery,
-  ReserveInventoryRequest,
-  ReturnInventoryRequest,
-  UpdateInventoryRequest,
-} from '@/types/inventory';
+import type { AdjustInventoryPayload, GetInventoryMovementsQuery, GetInventoryQuery } from '@/types/inventory';
+import type { CreateCollectedEquipmentReportPayload } from '@/types/collectedEquipmentReport';
 
 export const inventoryApiService = {
-  /** GET /api/v1/inventory (UC 2.13) */
+  /** GET /api/v1/inventory */
   async getInventory(params?: GetInventoryQuery) {
     const response = await api.get('/inventory', { params });
     return response.data;
   },
 
-  /** POST /api/v1/inventory — ngoài doc 05-warehouse-inventory.md, xem types/inventory.ts */
-  async createInventory(body: CreateInventoryRequest) {
-    const response = await api.post('/inventory', body);
+  /** POST /api/v1/inventory/adjust */
+  async adjustInventory(payload: AdjustInventoryPayload) {
+    const response = await api.post('/inventory/adjust', payload);
     return response.data;
   },
 
-  /** PUT /api/v1/inventory/:id — ngoài doc 05-warehouse-inventory.md, xem types/inventory.ts */
-  async updateInventory(id: string, body: UpdateInventoryRequest) {
-    const response = await api.put(`/inventory/${id}`, body);
+  /** GET /api/v1/inventory/movements */
+  async getMovements(params?: GetInventoryMovementsQuery) {
+    const response = await api.get('/inventory/movements', { params });
     return response.data;
   },
 
-  /** GET /api/v1/inventory/availability (UC 2.13) */
-  async getInventoryAvailability(params: GetInventoryAvailabilityQuery) {
-    const response = await api.get('/inventory/availability', { params });
+  /** POST /api/v1/inventory/return-reports — kho ghi nhận báo cáo thu hồi thiết bị */
+  async createReturnReport(payload: CreateCollectedEquipmentReportPayload) {
+    const response = await api.post('/inventory/return-reports', payload);
     return response.data;
   },
 
-  /** POST /api/v1/inventory/reserve (UC 2.13) */
-  async reserveInventory(body: ReserveInventoryRequest) {
-    const response = await api.post('/inventory/reserve', body);
-    return response.data;
-  },
-
-  /** GET /api/v1/warehouse-histories (UC 2.23) */
-  async getWarehouseHistories(params?: GetWarehouseHistoriesQuery) {
-    const response = await api.get('/warehouse-histories', { params });
-    return response.data;
-  },
-
-  /** POST /api/v1/warehouse/checkout (UC 2.23) */
-  async checkoutWarehouse(body: CheckoutInventoryRequest) {
-    const response = await api.post('/warehouse/checkout', body);
-    return response.data;
-  },
-
-  /** POST /api/v1/warehouse/return (UC 2.23) */
-  async returnWarehouse(body: ReturnInventoryRequest) {
-    const response = await api.post('/warehouse/return', body);
+  /** PUT /api/v1/inventory/return-reports/:id/confirm — cộng good vào available, damaged vào damaged, trừ lost khỏi total */
+  async confirmReturnReport(reportId: string) {
+    const response = await api.put(`/inventory/return-reports/${reportId}/confirm`);
     return response.data;
   },
 };

@@ -2,40 +2,31 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Search, Eye, Pencil, Ban, CheckCircle2, Plus, RotateCw } from 'lucide-react';
+import { Search, Eye, Pencil, Plus, RotateCw } from 'lucide-react';
 import { catalogApiService } from '@/services/catalog.service';
 import { Table, TableColumn } from '@/components/ui/Table';
 import { Pagination } from '@/components/ui/Pagination';
 import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
-import { Badge, getStatusBadgeVariant } from '@/components/ui/Badge';
 import { CategoryFormModal, CategoryFormValues } from '@/components/catalog/CategoryFormModal';
 import { usePagination } from '@/hooks/usePagination';
 import { useDebounce } from '@/hooks/useDebounce';
 import { usePermission } from '@/hooks/usePermission';
-import { formatDate } from '@/utils/formatDate';
-import type { CatalogCategory } from '@/types/catalog';
-
-const STATUS_OPTIONS = [
-  { value: 'true', label: 'Đang hoạt động' },
-  { value: 'false', label: 'Đã vô hiệu hóa' },
-];
+import type { ItemCategory } from '@/types/catalog';
 
 export default function Page() {
   const { can } = usePermission();
   const canManage = can('master-data:manage');
 
-  const [categories, setCategories] = useState<CatalogCategory[]>([]);
+  const [categories, setCategories] = useState<ItemCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 400);
-  const [statusFilter, setStatusFilter] = useState('');
 
   const { pagination, setPage, updatePagination } = usePagination(10);
 
-  const [formModal, setFormModal] = useState<{ mode: 'create' | 'edit'; category: CatalogCategory | null } | null>(null);
+  const [formModal, setFormModal] = useState<{ mode: 'create' | 'edit'; category: ItemCategory | null } | null>(null);
   const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const [formError, setFormError] = useState('');
 
@@ -46,11 +37,10 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag toggled before/after the fetch below, not a render loop
     setIsLoading(true);
     catalogApiService
-      .getCatalogCategories({
+      .getCategories({
         page: pagination.currentPage,
         limit: pagination.limit,
         search: debouncedSearch || undefined,
-        isActive: statusFilter ? statusFilter === 'true' : undefined,
       })
       .then((res) => {
         setCategories(res.data);
@@ -61,13 +51,13 @@ export default function Page() {
       })
       .finally(() => setIsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pagination.currentPage, pagination.limit, debouncedSearch, statusFilter, refreshToken]);
+  }, [pagination.currentPage, pagination.limit, debouncedSearch, refreshToken]);
 
   const handleCreateSubmit = async (values: CategoryFormValues) => {
     setIsSubmittingForm(true);
     setFormError('');
     try {
-      await catalogApiService.createCatalogCategory(values);
+      await catalogApiService.createCategory(values);
       setFormModal(null);
       refetchCategories();
     } catch (err) {
@@ -77,14 +67,11 @@ export default function Page() {
     }
   };
 
-  const handleEditSubmit = async (values: CategoryFormValues, category: CatalogCategory, isActive?: boolean) => {
+  const handleEditSubmit = async (values: CategoryFormValues, category: ItemCategory) => {
     setIsSubmittingForm(true);
     setFormError('');
     try {
-      await catalogApiService.updateCatalogCategory(category.id, values);
-      if (isActive != null && isActive !== category.isActive) {
-        await catalogApiService.updateCatalogCategoryStatus(category.id, { isActive });
-      }
+      await catalogApiService.updateCategory(category.categoryId, values);
       setFormModal(null);
       refetchCategories();
     } catch (err) {
@@ -94,51 +81,17 @@ export default function Page() {
     }
   };
 
-  const handleToggleStatus = async (category: CatalogCategory) => {
-    const nextIsActive = !category.isActive;
-    const confirmMessage = nextIsActive
-      ? `Kích hoạt lại danh mục "${category.name}"?`
-      : `Vô hiệu hóa danh mục "${category.name}"?`;
-    if (!window.confirm(confirmMessage)) return;
-
-    try {
-      await catalogApiService.updateCatalogCategoryStatus(category.id, { isActive: nextIsActive });
-      refetchCategories();
-    } catch (err) {
-      window.alert(getErrorMessage(err, 'Cập nhật trạng thái thất bại'));
-    }
-  };
-
-  const columns: TableColumn<CatalogCategory>[] = [
-    { key: 'id', label: 'Mã danh mục' },
+  const columns: TableColumn<ItemCategory>[] = [
+    { key: 'categoryId', label: 'Mã danh mục' },
     {
-      key: 'name',
+      key: 'categoryName',
       label: 'Tên danh mục',
       render: (row) => (
         <div>
-          <p className="font-medium text-slate-800">{row.name}</p>
+          <p className="font-medium text-slate-800">{row.categoryName}</p>
           {row.description && <p className="text-xs text-slate-400">{row.description}</p>}
         </div>
       ),
-    },
-    {
-      key: 'totalEquipment',
-      label: 'Tổng thiết bị',
-      render: (row) => `${row.totalEquipment} thiết bị`,
-    },
-    {
-      key: 'isActive',
-      label: 'Trạng thái',
-      render: (row) => (
-        <Badge variant={getStatusBadgeVariant(row.isActive ? 'ACTIVE' : 'INACTIVE')}>
-          {row.isActive ? 'Đang hoạt động' : 'Đã vô hiệu hóa'}
-        </Badge>
-      ),
-    },
-    {
-      key: 'createdAt',
-      label: 'Ngày tạo',
-      render: (row) => formatDate(row.createdAt),
     },
     {
       key: 'actions',
@@ -146,7 +99,7 @@ export default function Page() {
       render: (row) => (
         <div className="flex items-center gap-1.5">
           <Link
-            href={`/admin/catalog/categories/${row.id}`}
+            href={`/admin/catalog/categories/${row.categoryId}`}
             aria-label="Xem chi tiết"
             title="Xem chi tiết"
             className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
@@ -154,26 +107,15 @@ export default function Page() {
             <Eye className="h-4 w-4" />
           </Link>
           {canManage && (
-            <>
-              <button
-                type="button"
-                aria-label="Chỉnh sửa"
-                title="Chỉnh sửa"
-                onClick={() => setFormModal({ mode: 'edit', category: row })}
-                className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600"
-              >
-                <Pencil className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                aria-label={row.isActive ? 'Vô hiệu hóa' : 'Kích hoạt'}
-                title={row.isActive ? 'Vô hiệu hóa' : 'Kích hoạt'}
-                onClick={() => handleToggleStatus(row)}
-                className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-red-600"
-              >
-                {row.isActive ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-              </button>
-            </>
+            <button
+              type="button"
+              aria-label="Chỉnh sửa"
+              title="Chỉnh sửa"
+              onClick={() => setFormModal({ mode: 'edit', category: row })}
+              className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600"
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
           )}
         </div>
       ),
@@ -208,16 +150,6 @@ export default function Page() {
               }}
             />
           </div>
-          <div className="w-48">
-            <Select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setPage(1);
-              }}
-              options={[{ value: '', label: 'Tất cả trạng thái' }, ...STATUS_OPTIONS]}
-            />
-          </div>
           <button
             type="button"
             aria-label="Làm mới"
@@ -230,7 +162,7 @@ export default function Page() {
         </div>
 
         <div className="mt-4">
-          <Table columns={columns} rows={categories} rowKey={(row) => row.id} isLoading={isLoading} />
+          <Table columns={columns} rows={categories} rowKey={(row) => row.categoryId} isLoading={isLoading} />
         </div>
         <Pagination pagination={pagination} onPageChange={setPage} />
       </div>
@@ -245,9 +177,9 @@ export default function Page() {
           setFormModal(null);
           setFormError('');
         }}
-        onSubmit={(values, isActive) => {
+        onSubmit={(values) => {
           if (formModal?.mode === 'edit' && formModal.category) {
-            handleEditSubmit(values, formModal.category, isActive);
+            handleEditSubmit(values, formModal.category);
           } else {
             handleCreateSubmit(values);
           }

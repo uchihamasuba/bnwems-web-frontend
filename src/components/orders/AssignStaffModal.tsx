@@ -4,28 +4,33 @@ import { useEffect, useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
+import { Input } from '@/components/ui/Input';
 import { userApiService } from '@/services/user.service';
-import { assignmentApiService } from '@/services/assignment.service';
-import { EXECUTION_ROLE_OPTIONS, SURVEY_ROLE } from './surveyPersonnel.constants';
+import { schedulePlanApiService } from '@/services/schedulePlan.service';
 import type { AdminUser } from '@/types/user';
-import type { AssignmentMember } from '@/types/assignment';
+import type { SchedulePlan } from '@/types/schedulePlan';
 
 type AssignMode = 'survey' | 'execution';
 
 interface AssignStaffModalProps {
   isOpen: boolean;
   mode: AssignMode;
+  orderId: string;
   taskId: string | null;
   onClose: () => void;
-  onAssigned: (mode: AssignMode, member: AssignmentMember) => void;
+  onAssigned: (plan: SchedulePlan) => void;
 }
 
-const STAFF_ROLES = new Set(['LEADER_STAFF', 'TECHNICAL_STAFF']);
+// GET /users trả role raw enum (không hậu tố _STAFF) — xem docs/more-require.md.
+const STAFF_ROLES = new Set(['LEADER', 'TECHNICAL']);
 
-export default function AssignStaffModal({ isOpen, mode, taskId, onClose, onAssigned }: Readonly<AssignStaffModalProps>) {
+// Tạo 1 SchedulePlan mới (orderId+taskId+assignedTo+startTime) — không có endpoint sửa assignedTo
+// của plan đã tồn tại, nên "đổi người khảo sát" cũng tạo plan mới thay vì sửa tại chỗ.
+export default function AssignStaffModal({ isOpen, mode, orderId, taskId, onClose, onAssigned }: Readonly<AssignStaffModalProps>) {
   const [staff, setStaff] = useState<AdminUser[]>([]);
   const [userId, setUserId] = useState('');
-  const [role, setRole] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [location, setLocation] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,7 +39,8 @@ export default function AssignStaffModal({ isOpen, mode, taskId, onClose, onAssi
     /* eslint-disable react-hooks/set-state-in-effect -- reset form state khi mở modal, không phải vòng lặp render */
     setError(null);
     setUserId('');
-    setRole(mode === 'survey' ? SURVEY_ROLE : EXECUTION_ROLE_OPTIONS[0]);
+    setStartTime('');
+    setLocation('');
     /* eslint-enable react-hooks/set-state-in-effect */
     userApiService
       .getUsers({ limit: 100 })
@@ -43,25 +49,37 @@ export default function AssignStaffModal({ isOpen, mode, taskId, onClose, onAssi
         setStaff(list);
       })
       .catch(() => setStaff([]));
-  }, [isOpen, mode]);
-
-  const roleOptions = mode === 'survey' ? [SURVEY_ROLE] : EXECUTION_ROLE_OPTIONS;
+  }, [isOpen]);
 
   const handleSubmit = async () => {
-    if (!taskId || !userId || !role) {
-      setError('Vui lòng chọn nhân sự và vai trò.');
+    if (!taskId || !userId || !startTime) {
+      setError('Vui lòng chọn nhân sự và thời gian thực hiện.');
       return;
     }
     setIsSubmitting(true);
     setError(null);
     try {
-      await assignmentApiService.assignStaff(taskId, { assignments: [{ userId, assignedRole: role }] });
-      const user = staff.find((u) => u.id === userId);
-      onAssigned(mode, {
-        userId,
-        fullName: user?.fullName ?? userId,
-        assignedRole: role,
-        fieldStatus: 'pending',
+      const res = await schedulePlanApiService.createSchedulePlan({
+        orderId,
+        taskId,
+        assignedTo: userId,
+        startTime: new Date(startTime).toISOString(),
+        location: location.trim() || undefined,
+      });
+      const user = staff.find((u) => u.userId === userId);
+      onAssigned({
+        planId: res.data?.planId ?? '',
+        planCode: '',
+        orderId,
+        taskId,
+        assignedTo: userId,
+        startTime: new Date(startTime).toISOString(),
+        location: location.trim() || undefined,
+        status: 'PENDING',
+        createdBy: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        assigneeName: user?.fullName,
       });
       onClose();
     } catch {
@@ -83,7 +101,7 @@ export default function AssignStaffModal({ isOpen, mode, taskId, onClose, onAssi
             Hủy
           </Button>
           <Button onClick={handleSubmit} isLoading={isSubmitting}>
-            {mode === 'survey' ? 'Cập nhật' : 'Phân công'}
+            Phân công
           </Button>
         </>
       }
@@ -95,15 +113,10 @@ export default function AssignStaffModal({ isOpen, mode, taskId, onClose, onAssi
           placeholder="Chọn nhân sự"
           value={userId}
           onChange={(e) => setUserId(e.target.value)}
-          options={staff.map((u) => ({ value: u.id, label: `${u.fullName} (${u.username})` }))}
+          options={staff.map((u) => ({ value: u.userId, label: `${u.fullName} (${u.username})` }))}
         />
-        <Select
-          label="Vai trò"
-          required
-          value={role}
-          onChange={(e) => setRole(e.target.value)}
-          options={roleOptions.map((r) => ({ value: r, label: r }))}
-        />
+        <Input type="datetime-local" label="Thời gian thực hiện" required value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+        <Input label="Địa điểm (không bắt buộc)" value={location} onChange={(e) => setLocation(e.target.value)} />
         {staff.length === 0 && <p className="text-xs text-amber-600">Không tải được danh sách nhân sự.</p>}
         {error && <p className="text-xs text-red-600">{error}</p>}
       </div>

@@ -1,8 +1,7 @@
 /**
  * @file order.service.test.ts
- * Unit tests for orderApiService.createOrder — xác nhận payload (bao gồm eventEndDate/eventType/
- * guestCount, mới thêm khi backend hỗ trợ — xem docs/more-require.md mục s/u/w) được gửi đúng lên
- * POST /orders. Cũng test updateOrder (endpoint suy đoán, mục z) và changeOrderDate.
+ * Unit tests for orderApiService — khớp backend sau đợt refactor 2026-07-06 (types/order.ts,
+ * services/order.service.ts).
  */
 import { orderApiService } from '@/services/order.service';
 import api from '@/services/api';
@@ -24,33 +23,17 @@ describe('orderApiService.createOrder', () => {
     jest.clearAllMocks();
   });
 
-  it('gửi đúng payload đầy đủ (customerId, eventDate, venueAddress, eventEndDate, eventType, guestCount)', async () => {
-    const responseData = { success: true, data: { id: '123' } };
+  it('gửi đúng payload đầy đủ lên POST /orders', async () => {
+    const responseData = { success: true, data: { orderId: '123', orderCode: 'ORD-123' } };
     mockedPost.mockResolvedValue({ data: responseData });
 
     const payload = {
       customerId: '1',
+      eventType: 'Tiệc cưới',
       eventDate: '2026-12-01T00:00:00.000Z',
-      venueAddress: '123 Đường ABC, Quận 1, TP.HCM',
-      eventEndDate: '2026-12-02T00:00:00.000Z',
-      eventType: 'Tiệc cưới',
+      location: '123 Đường ABC, Quận 1, TP.HCM',
       guestCount: 200,
-    };
-
-    const result = await orderApiService.createOrder(payload);
-
-    expect(mockedPost).toHaveBeenCalledWith('/orders', payload);
-    expect(result).toEqual(responseData);
-  });
-
-  it('vẫn hoạt động khi chỉ có field bắt buộc (customerId, eventDate, venueAddress)', async () => {
-    const responseData = { success: true, data: { id: '124' } };
-    mockedPost.mockResolvedValue({ data: responseData });
-
-    const payload = {
-      customerId: '2',
-      eventDate: '2026-12-05T00:00:00.000Z',
-      venueAddress: '456 Đường XYZ, Quận 3, TP.HCM',
+      items: [{ itemId: '10', quantity: 2, unitPrice: 500000 }],
     };
 
     const result = await orderApiService.createOrder(payload);
@@ -60,43 +43,38 @@ describe('orderApiService.createOrder', () => {
   });
 });
 
-describe('orderApiService.updateOrder', () => {
+describe('orderApiService.updateOrderStatus', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('gửi đúng payload lên PUT /orders/:id (endpoint suy đoán, xem docs/more-require.md mục z)', async () => {
-    const responseData = { success: true, data: { orderId: '123' } };
+  it('gửi đúng payload lên PUT /orders/:id/status', async () => {
+    const responseData = { success: true, message: 'Cập nhật trạng thái đơn hàng thành công.' };
     mockedPut.mockResolvedValue({ data: responseData });
 
-    const payload = {
-      venueAddress: '123 Đường ABC, Quận 1, TP.HCM',
-      eventType: 'Tiệc cưới',
-      eventEndDate: '2026-12-02T00:00:00.000Z',
-      guestCount: 200,
-    };
+    const payload = { orderStatus: 'CANCELLED' as const, cancelReason: 'Khách hủy' };
 
-    const result = await orderApiService.updateOrder('123', payload);
+    const result = await orderApiService.updateOrderStatus('123', payload);
 
-    expect(mockedPut).toHaveBeenCalledWith('/orders/123', payload);
+    expect(mockedPut).toHaveBeenCalledWith('/orders/123/status', payload);
     expect(result).toEqual(responseData);
   });
 });
 
-describe('orderApiService.changeOrderDate', () => {
+describe('orderApiService.updateOrderItems', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('gửi đúng payload lên PUT /orders/:id/change-date với field newEventDate', async () => {
-    const responseData = { success: true, message: 'Order date updated.' };
+  it('gửi đúng payload lên PUT /orders/:id/items (thay toàn bộ danh sách)', async () => {
+    const responseData = { success: true, message: 'Cập nhật danh sách thiết bị thành công.' };
     mockedPut.mockResolvedValue({ data: responseData });
 
-    const payload = { newEventDate: '2026-12-10T00:00:00.000Z' };
+    const payload = { items: [{ itemId: '10', quantity: 3, unitPrice: 500000 }] };
 
-    const result = await orderApiService.changeOrderDate('123', payload);
+    const result = await orderApiService.updateOrderItems('123', payload);
 
-    expect(mockedPut).toHaveBeenCalledWith('/orders/123/change-date', payload);
+    expect(mockedPut).toHaveBeenCalledWith('/orders/123/items', payload);
     expect(result).toEqual(responseData);
   });
 });

@@ -10,22 +10,20 @@ import CustomerProfileCard from '@/components/orders/CustomerProfileCard';
 import FinalQuotation from '@/components/orders/FinalQuotation';
 import PaymentHistoryCard from '@/components/orders/PaymentHistoryCard';
 import SettlementSummaryCard from '@/components/orders/SettlementSummaryCard';
-import RequestPaymentModal from '@/components/orders/RequestPaymentModal';
+import RecordDepositModal from '@/components/orders/RecordDepositModal';
+import RecordSettlementModal from '@/components/orders/RecordSettlementModal';
 import CancelOrderModal from '@/components/orders/CancelOrderModal';
-import EditOrderModal from '@/components/orders/EditOrderModal';
-import ChangeEventDateModal from '@/components/orders/ChangeEventDateModal';
 import SurveyPersonnelTab from '@/components/orders/SurveyPersonnelTab';
 import OrderStatusHistoryTab from '@/components/orders/OrderStatusHistoryTab';
 import { orderApiService } from '@/services/order.service';
 import { customerApiService } from '@/services/customer.service';
 import { paymentApiService } from '@/services/payment.service';
 import { settlementApiService } from '@/services/settlement.service';
-import { quotationApiService } from '@/services/quotation.service';
 import { usePermission } from '@/hooks/usePermission';
 import type { OrderDetail } from '@/types/order';
 import type { Customer } from '@/types/customer';
-import type { Payment } from '@/types/payment';
-import type { SettlementPreviewMock } from '@/types/settlement';
+import type { Deposit } from '@/types/payment';
+import type { Settlement } from '@/types/settlement';
 
 const TABS: OrderTabItem[] = [
   { key: 'overview', label: 'Tổng quan' },
@@ -45,22 +43,15 @@ export default function Page() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('settlement');
 
-  const [quotationTotal, setQuotationTotal] = useState<number | null>(null);
+  const [deposits, setDeposits] = useState<Deposit[]>([]);
+  const [isLoadingDeposits, setIsLoadingDeposits] = useState(true);
 
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [isLoadingPayments, setIsLoadingPayments] = useState(true);
-
-  const [settlementPreview, setSettlementPreview] = useState<SettlementPreviewMock | null>(null);
-  const [isSettlementConfirmed, setIsSettlementConfirmed] = useState(false);
+  const [settlement, setSettlement] = useState<Settlement | null>(null);
   const [isSubmittingSettlement, setIsSubmittingSettlement] = useState(false);
 
-  const [paymentModal, setPaymentModal] = useState<{ isOpen: boolean; mode: 'request' | 'record' }>({
-    isOpen: false,
-    mode: 'request',
-  });
+  const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
+  const [isSettlementModalOpen, setIsSettlementModalOpen] = useState(false);
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isChangeDateModalOpen, setIsChangeDateModalOpen] = useState(false);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag toggled before/after the fetch below, not a render loop
@@ -75,66 +66,39 @@ export default function Page() {
       .finally(() => setIsLoading(false));
   }, [id]);
 
-  const [quotationRefreshToken, setQuotationRefreshToken] = useState(0);
+  const [settlementRefreshToken, setSettlementRefreshToken] = useState(0);
 
   useEffect(() => {
-    quotationApiService
-      .getOrderQuotations(id)
-      .then((res) => {
-        const list = res.data ?? [];
-        // getOrderQuotations sắp version desc — phần tử đầu (không phải cuối) là phiên bản mới nhất.
-        const latest = list[0];
-        setQuotationTotal(latest ? latest.totalAmount : null);
-      })
-      .catch((err) => console.error('[quotations]', err?.response?.data ?? err));
-  }, [id, quotationRefreshToken]);
+    settlementApiService.getOrderSettlement(id).then((res) => setSettlement(res.data ?? null));
+  }, [id, settlementRefreshToken]);
 
-  useEffect(() => {
-    // Mock-only — backend không có GET cho settlement theo orderId, xem docs/more-require.md (a).
-    settlementApiService.getSettlementPreviewMock(id).then((res) => setSettlementPreview(res.data ?? null));
-  }, [id]);
-
-  const [paymentsRefreshToken, setPaymentsRefreshToken] = useState(0);
+  const [depositsRefreshToken, setDepositsRefreshToken] = useState(0);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag toggled before/after the fetch below, not a render loop
-    setIsLoadingPayments(true);
+    setIsLoadingDeposits(true);
     paymentApiService
-      .getPaymentsByOrder(id)
-      .then((res) => setPayments(res.data ?? []))
-      .catch((err) => console.error('[payments]', err?.response?.data ?? err))
-      .finally(() => setIsLoadingPayments(false));
-  }, [id, paymentsRefreshToken]);
+      .getOrderDeposits(id)
+      .then((res) => setDeposits(res.data ?? []))
+      .catch((err) => console.error('[deposits]', err?.response?.data ?? err))
+      .finally(() => setIsLoadingDeposits(false));
+  }, [id, depositsRefreshToken]);
 
-  const refreshPayments = () => setPaymentsRefreshToken((t) => t + 1);
+  const refreshDeposits = () => setDepositsRefreshToken((t) => t + 1);
+  const refreshSettlement = () => setSettlementRefreshToken((t) => t + 1);
 
-  const totalCollected = payments.filter((p) => p.status === 'success').reduce((sum, p) => sum + Number(p.amount), 0);
+  const totalCollected = deposits.filter((d) => d.status === 'SUCCESS').reduce((sum, d) => sum + Number(d.amount), 0);
 
   const refreshOrder = () => {
     orderApiService.getOrder(id).then((res) => setOrder(res.data));
   };
 
   const handleConfirmSettlement = async () => {
-    if (!settlementPreview) return;
+    if (!settlement) return;
     setIsSubmittingSettlement(true);
     try {
-      const customerOwedCompensation = settlementPreview.damageLines
-        .filter((l) => l.responsible === 'customer')
-        .reduce((sum, l) => sum + l.amount, 0);
-      // remainingAmount gửi backend KHÔNG trừ discount — backend không có field này, xem docs/more-require.md (k)
-      const remainingAmount =
-        settlementPreview.originalValue + settlementPreview.additionalFees - customerOwedCompensation - settlementPreview.totalPaid;
-
-      const recordRes = await settlementApiService.recordSettlement(id, {
-        originalValue: settlementPreview.originalValue,
-        additionalFees: settlementPreview.additionalFees,
-        compensation: customerOwedCompensation,
-        paidAmount: settlementPreview.totalPaid,
-        remainingAmount,
-      });
-      await settlementApiService.confirmSettlement(recordRes.data.settlementId, { status: 'confirmed' });
-      // Không có GET nào để refetch trạng thái settlement vừa confirm — cập nhật state cục bộ.
-      setIsSettlementConfirmed(true);
+      await settlementApiService.confirmSettlement(settlement.settlementId, { status: 'CONFIRMED' });
+      refreshSettlement();
     } finally {
       setIsSubmittingSettlement(false);
     }
@@ -152,15 +116,13 @@ export default function Page() {
     <div className="p-6">
       <OrderDetailHeader
         order={order}
-        customerName={customer.fullName}
+        customerName={customer.customerName}
         canManage={canManage}
         onCancelOrder={() => setIsCancelModalOpen(true)}
-        onEditOrder={() => setIsEditModalOpen(true)}
-        onChangeEventDate={() => setIsChangeDateModalOpen(true)}
       />
 
       <div className="mb-8">
-        <OrderLifecycleStepper status={order.status} />
+        <OrderLifecycleStepper status={order.orderStatus} />
       </div>
 
       <OrderTabs tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} />
@@ -170,9 +132,9 @@ export default function Page() {
           <div className="lg:col-span-2">
             <EventOverviewCard
               order={order}
-              quotationTotal={quotationTotal}
+              quotationTotal={order.totalAmount}
               paymentCollected={totalCollected}
-              paymentTotal={quotationTotal ?? 0}
+              paymentTotal={order.totalAmount}
             />
           </div>
           <CustomerProfileCard customer={customer} />
@@ -180,66 +142,58 @@ export default function Page() {
       )}
 
       {activeTab === 'quotation' && (
-        <FinalQuotation orderId={id} canManage={canManage} onQuotationChanged={() => setQuotationRefreshToken((t) => t + 1)} />
+        <FinalQuotation
+          quotationId={order.quotationId}
+          customerId={order.customerId}
+          canManage={canManage}
+        />
       )}
 
       {activeTab === 'settlement' && (
         <div className="space-y-6">
           <PaymentHistoryCard
-            payments={payments}
-            totalDue={quotationTotal ?? 0}
-            isLoading={isLoadingPayments}
-            onOpenRequestPayment={() => setPaymentModal({ isOpen: true, mode: 'request' })}
+            deposits={deposits}
+            totalDue={order.totalAmount}
+            isLoading={isLoadingDeposits}
+            onOpenRequestPayment={() => setIsDepositModalOpen(true)}
           />
-          {settlementPreview ? (
-            <SettlementSummaryCard
-              preview={settlementPreview}
-              canManage={canManage}
-              isConfirmed={isSettlementConfirmed}
-              isSubmitting={isSubmittingSettlement}
-              onConfirmSettlement={handleConfirmSettlement}
-              onRecordPayment={() => setPaymentModal({ isOpen: true, mode: 'record' })}
-            />
-          ) : (
-            <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-400 shadow-sm">
-              Chưa có dữ liệu quyết toán cho đơn hàng này.
-            </div>
-          )}
+          <SettlementSummaryCard
+            settlement={settlement}
+            orderTotal={order.totalAmount}
+            depositCollected={totalCollected}
+            canManage={canManage}
+            isSubmitting={isSubmittingSettlement}
+            onOpenRecordSettlement={() => setIsSettlementModalOpen(true)}
+            onConfirmSettlement={handleConfirmSettlement}
+          />
         </div>
       )}
 
       {activeTab === 'survey' && <SurveyPersonnelTab orderId={id} canManage={canManage} />}
       {activeTab === 'history' && <OrderStatusHistoryTab order={order} />}
 
-      <RequestPaymentModal
-        isOpen={paymentModal.isOpen}
+      <RecordDepositModal
+        isOpen={isDepositModalOpen}
         orderId={id}
-        mode={paymentModal.mode}
-        onClose={() => setPaymentModal((m) => ({ ...m, isOpen: false }))}
-        onSuccess={refreshPayments}
+        onClose={() => setIsDepositModalOpen(false)}
+        onSuccess={refreshDeposits}
+      />
+
+      <RecordSettlementModal
+        isOpen={isSettlementModalOpen}
+        orderId={id}
+        orderTotal={order.totalAmount}
+        depositCollected={totalCollected}
+        onClose={() => setIsSettlementModalOpen(false)}
+        onSuccess={refreshSettlement}
       />
 
       <CancelOrderModal
         isOpen={isCancelModalOpen}
         order={order}
-        customerName={customer.fullName}
+        customerName={customer.customerName}
         depositCollected={totalCollected}
         onClose={() => setIsCancelModalOpen(false)}
-        onSuccess={refreshOrder}
-      />
-
-      <EditOrderModal
-        isOpen={isEditModalOpen}
-        order={order}
-        customerName={customer.fullName}
-        onClose={() => setIsEditModalOpen(false)}
-        onSuccess={refreshOrder}
-      />
-
-      <ChangeEventDateModal
-        isOpen={isChangeDateModalOpen}
-        order={order}
-        onClose={() => setIsChangeDateModalOpen(false)}
         onSuccess={refreshOrder}
       />
     </div>

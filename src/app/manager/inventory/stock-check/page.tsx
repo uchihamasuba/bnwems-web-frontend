@@ -7,41 +7,23 @@ import { FileText, Trash2 } from 'lucide-react';
 import { orderApiService } from '@/services/order.service';
 import { customerApiService } from '@/services/customer.service';
 import { quotationApiService } from '@/services/quotation.service';
-import { equipmentApiService } from '@/services/equipment.service';
+import { catalogApiService } from '@/services/catalog.service';
+import { inventoryApiService } from '@/services/inventory.service';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import type { Order } from '@/types/order';
 import type { Customer } from '@/types/customer';
-import type { EquipmentItem } from '@/types/equipment';
-
-// Kho mock — doc API KHÔNG có GET /warehouses (đã bỏ, xem docs/more-require.md)
-const MOCK_WAREHOUSES = [
-  { value: 'wh-1', label: 'Kho tổng' },
-  { value: 'wh-2', label: 'Kho dự phòng' },
-  { value: 'wh-3', label: 'Kho phụ' },
-];
+import type { Item } from '@/types/catalog';
 
 const SOURCE_OPTIONS = [
   { value: 'quotation', label: 'Báo giá đã duyệt' },
   { value: 'manual', label: 'Nhập thủ công' },
 ];
 
-// MOCK: tính tồn kho giả từ equipmentItemId (backend thật không nối Equipment ↔ Inventory)
-// Equipment dùng bảng riêng (equipmentItemId), Inventory dùng catalogItemId — xem more-require.md (aa)
-function mockAvailability(equipmentItemId: string, required: number) {
-  const seed = equipmentItemId.split('').reduce((a, c) => a + (c.codePointAt(0) ?? 0), 0);
-  const total = required + (seed % 10); // đôi khi đủ, đôi khi thiếu
-  const reserved = seed % 4;
-  const damaged = seed % 3 === 0 ? 1 : 0;
-  const available = total;
-  const shortage = Math.max(0, required - (available - reserved - damaged));
-  return { available, reserved, damaged, shortage };
-}
-
 interface CheckItem {
   rowId: string;
-  equipmentItemId: string;
+  itemId: string;
   name: string;
   code: string;
   unit: string;
@@ -53,13 +35,13 @@ interface CheckItem {
   checked: boolean;
 }
 
-function buildRow(equipment: EquipmentItem, qty: number): CheckItem {
+function buildRow(item: Item, qty: number): CheckItem {
   return {
-    rowId: `${equipment.equipmentItemId}-${Date.now()}`,
-    equipmentItemId: equipment.equipmentItemId,
-    name: equipment.name,
-    code: equipment.code,
-    unit: equipment.unit ?? 'Cái',
+    rowId: `${item.itemId}-${Date.now()}`,
+    itemId: item.itemId,
+    name: item.itemName,
+    code: item.itemCode,
+    unit: item.unit,
     required: qty,
     available: 0,
     reserved: 0,
@@ -72,7 +54,7 @@ function buildRow(equipment: EquipmentItem, qty: number): CheckItem {
 function blankRow(): CheckItem {
   return {
     rowId: `manual-${Date.now()}`,
-    equipmentItemId: '',
+    itemId: '',
     name: 'Thiết bị mới',
     code: '',
     unit: 'Cái',
@@ -91,7 +73,6 @@ export default function Page() {
   const [isLoadingOrders, setIsLoadingOrders] = useState(true);
 
   const [selectedOrderId, setSelectedOrderId] = useState('');
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState('wh-1');
   const [eventDate, setEventDate] = useState('');
   const [source, setSource] = useState('quotation');
 
@@ -125,9 +106,11 @@ export default function Page() {
     }
   }, [selectedOrder]);
 
-  // Load thiết bị từ báo giá khi chọn đơn hàng
+  // Load thiết bị từ báo giá đã liên kết với đơn hàng (Order.quotationId) khi chọn đơn hàng.
+  // Quotation giờ thuộc Customer, Order chỉ tham chiếu 1 quotationId cố định — không còn danh sách
+  // nhiều báo giá theo order như trước.
   useEffect(() => {
-    if (!selectedOrderId || source !== 'quotation') {
+    if (!selectedOrderId || source !== 'quotation' || !selectedOrder?.quotationId) {
       setCheckItems([]);
       return;
     }
@@ -136,33 +119,23 @@ export default function Page() {
     setCheckItems([]);
 
     quotationApiService
-      .getOrderQuotations(selectedOrderId)
-      .then(async (res) => {
+      .getQuotation(selectedOrder.quotationId)
+      .then(async (detail) => {
         if (cancelled) return;
-        const list = (res.data as { quotationId: string; status: string; items?: unknown[] }[]) ?? [];
-        const confirmed = list.find((q) => q.status === 'confirmed') ?? list[0];
-        if (!confirmed) {
-          setIsLoadingItems(false);
-          return;
-        }
-        // Lấy chi tiết báo giá (có items)
-        const detail = await quotationApiService.getQuotation(confirmed.quotationId);
-        if (cancelled) return;
-        const items = (detail.data?.items ?? []) as { equipmentItemId: string; quantity: number }[];
+        const items = (detail.data?.items ?? []) as { itemId: string; quantity: number }[];
 
-        // Fetch thông tin thiết bị song song
-        const equipments = await Promise.all(
+        const catalogItems = await Promise.all(
           items.map((it) =>
-            equipmentApiService
-              .getEquipment(it.equipmentItemId)
-              .then((r) => ({ eq: r.data as EquipmentItem, qty: it.quantity }))
+            catalogApiService
+              .getItem(it.itemId)
+              .then((r) => ({ item: r.data as Item, qty: it.quantity }))
               .catch(() => null),
           ),
         );
         if (cancelled) return;
-        const rows = equipments
-          .filter((e): e is { eq: EquipmentItem; qty: number } => e !== null && !!e.eq)
-          .map(({ eq, qty }) => buildRow(eq, qty));
+        const rows = catalogItems
+          .filter((e): e is { item: Item; qty: number } => e !== null && !!e.item)
+          .map(({ item, qty }) => buildRow(item, qty));
         setCheckItems(rows);
       })
       .catch(() => setCheckItems([]))
@@ -173,22 +146,33 @@ export default function Page() {
     return () => {
       cancelled = true;
     };
-  }, [selectedOrderId, source]);
+  }, [selectedOrderId, source, selectedOrder]);
 
   const handleCheck = () => {
     if (!eventDate || checkItems.length === 0) return;
     setIsChecking(true);
-    // MOCK: backend không nối Equipment ↔ Inventory theo equipmentItemId
-    // Dùng giá trị giả lập ổn định theo seed từ equipmentItemId
-    setTimeout(() => {
+    Promise.all(
+      checkItems.map((item) =>
+        item.itemId
+          ? inventoryApiService
+              .getInventory({ itemId: item.itemId, limit: 1 })
+              .then((res) => res.data?.[0] ?? null)
+              .catch(() => null)
+          : Promise.resolve(null),
+      ),
+    ).then((inventories) => {
       setCheckItems((prev) =>
-        prev.map((item) => {
-          const mock = mockAvailability(item.equipmentItemId || item.rowId, item.required);
-          return { ...item, ...mock, checked: true };
+        prev.map((item, idx) => {
+          const inv = inventories[idx];
+          const available = inv?.quantityAvailable ?? 0;
+          const reserved = inv?.quantityReserved ?? 0;
+          const damaged = inv?.quantityDamaged ?? 0;
+          const shortage = Math.max(0, item.required - available);
+          return { ...item, available, reserved, damaged, shortage, checked: true };
         }),
       );
       setIsChecking(false);
-    }, 600);
+    });
   };
 
   const addItem = () => setCheckItems((prev) => [...prev, blankRow()]);
@@ -199,7 +183,7 @@ export default function Page() {
     setCheckItems((prev) =>
       prev.map((item) => {
         if (item.rowId !== rowId) return item;
-        const shortage = item.checked ? Math.max(0, value - (item.available - item.reserved - item.damaged)) : 0;
+        const shortage = item.checked ? Math.max(0, value - item.available) : 0;
         return { ...item, required: value, shortage };
       }),
     );
@@ -210,7 +194,7 @@ export default function Page() {
       { value: '', label: '— Chọn đơn hàng —' },
       ...orders.map((o) => ({
         value: o.orderId,
-        label: `${o.orderId} — ${customerById.get(o.customerId)?.fullName ?? 'Khách hàng'}`,
+        label: `${o.orderCode} — ${customerById.get(o.customerId)?.customerName ?? 'Khách hàng'}`,
       })),
     ],
     [orders, customerById],
@@ -246,14 +230,6 @@ export default function Page() {
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">Kho kiểm tra</label>
-              <Select
-                value={selectedWarehouseId}
-                onChange={(e) => setSelectedWarehouseId(e.target.value)}
-                options={MOCK_WAREHOUSES}
-              />
-            </div>
-            <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-700">Ngày diễn ra sự kiện</label>
               <input
                 type="date"
@@ -264,11 +240,7 @@ export default function Page() {
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-700">Nguồn danh sách thiết bị</label>
-              <Select
-                value={source}
-                onChange={(e) => setSource(e.target.value)}
-                options={SOURCE_OPTIONS}
-              />
+              <Select value={source} onChange={(e) => setSource(e.target.value)} options={SOURCE_OPTIONS} />
             </div>
           </div>
 
@@ -300,39 +272,27 @@ export default function Page() {
               <div className="flex items-start justify-between gap-2">
                 <dt className="shrink-0 text-slate-400">Mã đơn hàng</dt>
                 <dd>
-                  <Link
-                    href={`/manager/orders/${selectedOrder.orderId}`}
-                    className="font-semibold text-blue-600 hover:underline"
-                  >
-                    {selectedOrder.orderId}
+                  <Link href={`/manager/orders/${selectedOrder.orderId}`} className="font-semibold text-blue-600 hover:underline">
+                    {selectedOrder.orderCode}
                   </Link>
                 </dd>
               </div>
               <div className="flex items-start justify-between gap-2">
                 <dt className="shrink-0 text-slate-400">Khách hàng</dt>
-                <dd className="text-right font-semibold text-slate-800">
-                  {selectedCustomer?.fullName ?? '—'}
-                </dd>
+                <dd className="text-right font-semibold text-slate-800">{selectedCustomer?.customerName ?? '—'}</dd>
               </div>
               <div className="flex items-start justify-between gap-2">
                 <dt className="shrink-0 text-slate-400">Loại sự kiện</dt>
-                <dd className="italic text-slate-600" title="Dữ liệu minh họa">
-                  {selectedOrder.eventType ?? 'Tiệc cưới'}
-                </dd>
+                <dd className="text-slate-600">{selectedOrder.eventType}</dd>
               </div>
               <div className="flex items-start justify-between gap-2">
                 <dt className="shrink-0 text-slate-400">Ngày tổ chức</dt>
-                <dd className="font-semibold text-slate-800">
-                  {selectedOrder.eventDate?.slice(0, 10) ?? '—'}
-                </dd>
+                <dd className="font-semibold text-slate-800">{selectedOrder.eventDate?.slice(0, 10) ?? '—'}</dd>
               </div>
               <div className="flex items-start justify-between gap-2">
                 <dt className="shrink-0 text-slate-400">Địa điểm</dt>
-                <dd
-                  className="max-w-[140px] truncate text-right font-semibold text-slate-800"
-                  title={selectedOrder.eventLocation}
-                >
-                  {selectedOrder.venueName ?? selectedOrder.eventLocation ?? '—'}
+                <dd className="max-w-[140px] truncate text-right font-semibold text-slate-800" title={selectedOrder.location}>
+                  {selectedOrder.location}
                 </dd>
               </div>
             </dl>
@@ -359,11 +319,7 @@ export default function Page() {
                 </p>
               )}
             </div>
-            <button
-              type="button"
-              onClick={addItem}
-              className="text-sm font-semibold text-blue-600 hover:underline"
-            >
+            <button type="button" onClick={addItem} className="text-sm font-semibold text-blue-600 hover:underline">
               + Thêm thiết bị cần check
             </button>
           </div>
@@ -376,22 +332,8 @@ export default function Page() {
                 <table className="w-full text-sm">
                   <thead className="border-b border-slate-100">
                     <tr>
-                      {[
-                        'Thiết bị',
-                        'Mã thiết bị',
-                        'Đơn vị',
-                        'Yêu cầu',
-                        'Có sẵn',
-                        'Đã giữ chỗ',
-                        'Hỏng',
-                        'Thiếu',
-                        'Trạng thái',
-                        '',
-                      ].map((h) => (
-                        <th
-                          key={h}
-                          className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400"
-                        >
+                      {['Thiết bị', 'Mã thiết bị', 'Đơn vị', 'Yêu cầu', 'Có sẵn', 'Đã giữ chỗ', 'Hỏng', 'Thiếu', 'Trạng thái', ''].map((h) => (
+                        <th key={h} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">
                           {h}
                         </th>
                       ))}
@@ -403,7 +345,7 @@ export default function Page() {
                         <td colSpan={10} className="px-4 py-10 text-center text-sm italic text-slate-400">
                           Không có thiết bị nào.{' '}
                           {source === 'quotation'
-                            ? 'Đơn hàng chưa có báo giá hoặc báo giá chưa được xác nhận.'
+                            ? 'Đơn hàng chưa có báo giá liên kết.'
                             : 'Nhấn "+ Thêm thiết bị cần check" để thêm thủ công.'}
                         </td>
                       </tr>
