@@ -51,6 +51,19 @@ function computeRowState(row: SurveyRow): 'submitted' | 'overdue' | 'pending' {
   return new Date(row.mockSurveyDate) < new Date() ? 'overdue' : 'pending';
 }
 
+// MOCK: tiến trình khảo sát (%) — backend thật không có field này
+function mockProgressPct(row: SurveyRow): number {
+  if (computeRowState(row) === 'submitted') return 100;
+  const seed = row.task.orderId.split('').reduce((a, c) => a + (c.codePointAt(0) ?? 0), 0);
+  return 35 + (seed % 40); // 35–75%
+}
+
+function progressBarColor(state: 'submitted' | 'overdue' | 'pending'): string {
+  if (state === 'submitted') return 'bg-green-500';
+  if (state === 'overdue') return 'bg-red-400';
+  return 'bg-amber-400';
+}
+
 function fetchReportOrNull(task: WorkTask) {
   return surveyApiService
     .getSurveyReport(task.workTaskId)
@@ -167,7 +180,7 @@ export default function Page() {
     },
     {
       key: 'location',
-      label: 'Địa điểm khảo sát',
+      label: 'Địa điểm sảnh khảo sát',
       render: (row) => (
         <span className="flex max-w-[200px] items-center gap-1 truncate text-sm text-slate-600" title={row.order?.eventLocation}>
           <MapPin className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
@@ -195,20 +208,37 @@ export default function Page() {
           <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
             <User className="h-3.5 w-3.5 text-slate-400" />
             {row.surveyorName}
+            <span className="text-xs font-normal text-slate-400">(Leader)</span>
           </span>
         ) : (
           <span className="text-sm italic text-slate-400">Chưa phân công</span>
         ),
     },
     {
+      key: 'progress',
+      label: 'Tiến trình',
+      render: (row) => {
+        const pct = mockProgressPct(row);
+        const state = computeRowState(row);
+        const barColor = progressBarColor(state);
+        return (
+          <div className="flex w-28 items-center gap-2" title="Dữ liệu minh họa">
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+              <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        );
+      },
+    },
+    {
       key: 'status',
-      label: 'Báo cáo',
+      label: 'Trạng thái',
       className: 'whitespace-nowrap',
       render: (row) => {
         const state = computeRowState(row);
         if (state === 'submitted') return <Badge variant="success">Đã nộp</Badge>;
         if (state === 'overdue') return <Badge variant="error">Quá hạn</Badge>;
-        return <Badge variant="warning">Chưa nộp</Badge>;
+        return <Badge variant="warning">Chờ nộp</Badge>;
       },
     },
     {
