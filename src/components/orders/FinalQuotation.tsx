@@ -1,12 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { ExternalLink, Pencil, Plus } from 'lucide-react';
 import { Badge, getStatusBadgeVariant } from '@/components/ui/Badge';
 import { Table, TableColumn } from '@/components/ui/Table';
+import { Select } from '@/components/ui/Select';
+import { Button } from '@/components/ui/Button';
+import CreateQuotationModal from '@/components/orders/CreateQuotationModal';
 import { quotationApiService } from '@/services/quotation.service';
-import { catalogApiService } from '@/services/catalog.service';
+import { equipmentApiService } from '@/services/equipment.service';
 import { formatCurrency } from '@/utils/formatCurrency';
 import type { Quotation, QuotationDetail, QuotationItem } from '@/types/quotation';
+import type { EquipmentItem } from '@/types/equipment';
 
 const STATUS_LABEL: Record<Quotation['status'], string> = {
   draft: 'Nháp',
@@ -15,60 +21,86 @@ const STATUS_LABEL: Record<Quotation['status'], string> = {
 
 interface FinalQuotationProps {
   orderId: string;
-}
-
-// ⚠️ src/types/catalog.ts (file có từ trước, ngoài phạm vi sửa lần này) khai field catalog item
-// là `id` — nhưng backend thật (prisma/schema.prisma model CatalogItem) dùng `catalogItemId`,
-// không rename ở service. Không import type CatalogItem (sai field) — chỉ định nghĩa cục bộ đúng
-// 2 field cần dùng ở đây để tránh lan sai field đó. Nên rà soát lại toàn bộ src/types/catalog.ts +
-// các trang admin/catalog/* đang dùng type đó (ngoài phạm vi tab Báo giá này).
-interface CatalogItemNameLookup {
-  catalogItemId: string;
-  name: string;
+  canManage: boolean;
+  /** Gọi lại sau khi tạo/sửa báo giá thành công, để trang cha refetch tổng tiền báo giá ở tab Tổng quan. */
+  onQuotationChanged?: () => void;
 }
 
 // Tab "Báo giá" — dữ liệu thật 100% qua quotationApiService, tự fetch ở component này.
-// Backend thật chỉ cho phép tối đa 1 quotation/order (prisma.quotation.findUnique theo orderId) —
-// không có versioning nhiều bản như doc nghiệp vụ mô tả, nên không cần dropdown chọn version —
-// xem docs/more-require.md mục (m).
-export default function FinalQuotation({ orderId }: Readonly<FinalQuotationProps>) {
-  const [quotation, setQuotation] = useState<Quotation | null>(null);
+// Backend đã triển khai versioning thật cho quotation (rà soát lại 2026-07-04, xem
+// docs/more-require.md mục (m)) — hiển thị dropdown chọn phiên bản thay vì chỉ phiên bản mới nhất.
+export default function FinalQuotation({ orderId, canManage, onQuotationChanged }: Readonly<FinalQuotationProps>) {
+  const [versions, setVersions] = useState<Quotation[]>([]);
+  const [selectedId, setSelectedId] = useState<string>('');
   const [detail, setDetail] = useState<QuotationDetail | null>(null);
-  const [itemNameById, setItemNameById] = useState<Map<string, string>>(new Map());
+  const [equipmentNameById, setEquipmentNameById] = useState<Map<string, string>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
+  const [refreshToken, setRefreshToken] = useState(0);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   useEffect(() => {
-    quotationApiService.getOrderQuotations(orderId).then((res) => {
+    quotationApiService.getOrderQuotations(orderId, { limit: 50 }).then((res) => {
       const list: Quotation[] = res.data ?? [];
-      const latest = list.at(-1) ?? null;
-      setQuotation(latest);
+      // getOrderQuotations sắp version desc — phần tử đầu là phiên bản mới nhất.
+      setVersions(list);
+      setSelectedId(list[0]?.quotationId ?? '');
       setIsLoading(false);
-      if (latest) {
-        quotationApiService.getQuotation(latest.quotationId).then((detailRes) => setDetail(detailRes.data ?? null));
-      }
     });
-  }, [orderId]);
+  }, [orderId, refreshToken]);
 
   useEffect(() => {
-    catalogApiService.getCatalogItems({ limit: 200 }).then((res) => {
-      const items: CatalogItemNameLookup[] = res.data ?? [];
-      setItemNameById(new Map(items.map((item) => [item.catalogItemId, item.name])));
+    if (!selectedId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting detail when there is no version selected, not a render loop
+      setDetail(null);
+      return;
+    }
+    quotationApiService.getQuotation(selectedId).then((detailRes) => setDetail(detailRes.data ?? null));
+  }, [selectedId, refreshToken]);
+
+  const handleQuotationSaved = () => {
+    setRefreshToken((t) => t + 1);
+    onQuotationChanged?.();
+  };
+
+  useEffect(() => {
+    equipmentApiService.getEquipments({ limit: 200 }).then((res) => {
+      const items: EquipmentItem[] = res.data ?? [];
+      setEquipmentNameById(new Map(items.map((item) => [item.equipmentItemId, item.name])));
     });
   }, []);
+
+  const quotation = useMemo(() => versions.find((v) => v.quotationId === selectedId) ?? null, [versions, selectedId]);
 
   if (isLoading) {
     return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-400 shadow-sm">Đang tải...</div>;
   }
 
   if (!quotation) {
-    return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-400 shadow-sm">Chưa có báo giá nào.</div>;
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+        <p className="text-sm text-slate-400">Chưa có báo giá nào cho đơn hàng này.</p>
+        {canManage && (
+          <Button className="mt-4" onClick={() => setIsCreateModalOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Tạo báo giá mới
+          </Button>
+        )}
+        <CreateQuotationModal
+          isOpen={isCreateModalOpen}
+          orderId={orderId}
+          onClose={() => setIsCreateModalOpen(false)}
+          onSuccess={handleQuotationSaved}
+        />
+      </div>
+    );
   }
 
   const columns: TableColumn<QuotationItem>[] = [
     {
-      key: 'catalogItemId',
+      key: 'equipmentItemId',
       label: 'Hạng mục dịch vụ',
-      render: (row) => itemNameById.get(row.catalogItemId) ?? `#${row.catalogItemId}`,
+      render: (row) => equipmentNameById.get(row.equipmentItemId) ?? `#${row.equipmentItemId}`,
     },
     { key: 'quantity', label: 'Số lượng' },
     { key: 'unitPrice', label: 'Đơn giá', render: (row) => formatCurrency(row.unitPrice) },
@@ -82,10 +114,40 @@ export default function FinalQuotation({ orderId }: Readonly<FinalQuotationProps
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-slate-100 p-6">
-        <div className="flex items-center gap-4">
-          <span className="text-sm font-bold text-slate-900">Phiên bản {quotation.version}</span>
-          <Badge variant={getStatusBadgeVariant(quotation.status)}>{STATUS_LABEL[quotation.status]}</Badge>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-6">
+        <div className="flex items-center gap-3">
+          {versions.length > 1 ? (
+            <Select
+              value={selectedId}
+              onChange={(e) => setSelectedId(e.target.value)}
+              options={versions.map((v) => ({ value: v.quotationId, label: `Phiên bản ${v.version}` }))}
+              className="w-40"
+            />
+          ) : (
+            <span className="text-sm font-bold text-slate-900">Phiên bản {quotation.version}</span>
+          )}
+          <Badge variant={getStatusBadgeVariant(quotation.status.toUpperCase())}>{STATUS_LABEL[quotation.status]}</Badge>
+        </div>
+        <div className="flex items-center gap-3">
+          {canManage && quotation.status === 'draft' && (
+            <Button variant="secondary" size="sm" onClick={() => setIsEditModalOpen(true)}>
+              <Pencil className="h-3.5 w-3.5" />
+              Sửa bản nháp
+            </Button>
+          )}
+          {canManage && (
+            <Button size="sm" onClick={() => setIsCreateModalOpen(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              Tạo phiên bản mới
+            </Button>
+          )}
+          <Link
+            href={`/manager/quotations/${quotation.quotationId}`}
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:underline"
+          >
+            Xem đầy đủ / In báo giá
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Link>
         </div>
       </div>
 
@@ -107,6 +169,20 @@ export default function FinalQuotation({ orderId }: Readonly<FinalQuotationProps
 
         <Table columns={columns} rows={detail?.items ?? []} rowKey={(row) => row.id} isLoading={!detail} />
       </div>
+
+      <CreateQuotationModal
+        isOpen={isCreateModalOpen}
+        orderId={orderId}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSuccess={handleQuotationSaved}
+      />
+      <CreateQuotationModal
+        isOpen={isEditModalOpen}
+        orderId={orderId}
+        editingQuotation={detail?.quotationId === quotation.quotationId ? detail : null}
+        onClose={() => setIsEditModalOpen(false)}
+        onSuccess={handleQuotationSaved}
+      />
     </div>
   );
 }

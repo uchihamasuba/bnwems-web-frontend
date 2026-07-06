@@ -1,14 +1,15 @@
-import { Truck, Wrench, RotateCcw, ClipboardList, Circle, type LucideIcon } from 'lucide-react';
-import type { WorkTaskStatus } from '@/types/workTask';
+import { Wrench, ClipboardList, type LucideIcon } from 'lucide-react';
+import type { WorkTaskStatus, WorkTaskCategory } from '@/types/workTask';
 import type { FieldStatus } from '@/types/assignment';
 
 type BadgeVariant = 'success' | 'warning' | 'error' | 'info' | 'neutral';
 
-// Trạng thái cấp task (Theo dõi thi công)
+// Trạng thái cấp task (Theo dõi thi công) — khớp WorkTask.status thật (docs/more-require.md mục bb)
 export const TASK_STATUS_META: Record<WorkTaskStatus, { label: string; variant: BadgeVariant }> = {
-  completed: { label: 'ĐÃ HOÀN THÀNH', variant: 'success' },
+  done: { label: 'ĐÃ HOÀN THÀNH', variant: 'success' },
   in_progress: { label: 'ĐANG THỰC HIỆN', variant: 'info' },
-  pending: { label: 'CHƯA BẮT ĐẦU', variant: 'neutral' },
+  assigned: { label: 'ĐÃ GIAO VIỆC', variant: 'warning' },
+  draft: { label: 'NHÁP', variant: 'neutral' },
 };
 
 // Trạng thái từng nhân sự tại hiện trường (Phân công nhân sự)
@@ -19,16 +20,16 @@ export const FIELD_STATUS_META: Record<FieldStatus, { label: string; variant: Ba
   pending: { label: 'CHỜ', variant: 'warning' },
 };
 
-// taskType → nhãn giai đoạn + icon
-const TASK_TYPE_META: Record<string, { label: string; Icon: LucideIcon }> = {
-  transport: { label: 'Vận chuyển thiết bị', Icon: Truck },
-  installation: { label: 'Lắp đặt & Setup', Icon: Wrench },
-  collection: { label: 'Thu hồi & Hoàn trả', Icon: RotateCcw },
-  preparation: { label: 'Chuẩn bị', Icon: ClipboardList },
+// taskCategory thật chỉ có 'survey'/'operation' (không còn phân loại giai đoạn chi tiết như
+// transport/installation/collection) — nhãn hiển thị dùng luôn task.title (mô tả tự do, đã đủ chi
+// tiết), icon chỉ phân biệt theo category. Xem docs/more-require.md mục (bb).
+const CATEGORY_ICON: Record<WorkTaskCategory, LucideIcon> = {
+  survey: ClipboardList,
+  operation: Wrench,
 };
 
-export function taskTypeMeta(taskType: string): { label: string; Icon: LucideIcon } {
-  return TASK_TYPE_META[taskType] ?? { label: taskType, Icon: Circle };
+export function taskCategoryIcon(taskCategory: string): LucideIcon {
+  return CATEGORY_ICON[taskCategory as WorkTaskCategory] ?? Wrench;
 }
 
 // Vai trò gợi ý cho modal "+ Phân công" (thi công)

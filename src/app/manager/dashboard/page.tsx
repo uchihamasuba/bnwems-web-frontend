@@ -25,14 +25,17 @@ import {
   CalendarDays,
   MapPin,
   CheckCircle2,
+  MessageSquare,
 } from 'lucide-react';
 import { reportApiService } from '@/services/report.service';
 import { orderApiService } from '@/services/order.service';
 import { workTaskApiService } from '@/services/workTask.service';
+import { schedulePlanApiService } from '@/services/schedulePlan.service';
 import { changeRequestApiService } from '@/services/changeRequest.service';
 import { ManagerDashboardStats } from '@/types/report';
 import { Order } from '@/types/order';
 import { WorkTask } from '@/types/workTask';
+import { Schedule } from '@/types/schedulePlan';
 import { ChangeRequest } from '@/types/changeRequest';
 import { useAuth } from '@/hooks/useAuth';
 import DashboardStats, { KpiCardItem } from '@/components/reports/DashboardStats';
@@ -42,17 +45,6 @@ import AnalyticsCard from '@/components/dashboard/AnalyticsCard';
 import ActivityFeed, { ActivityFeedItem } from '@/components/dashboard/ActivityFeed';
 import { formatDate } from '@/utils/formatDate';
 import { ORDER_STATUS_LABEL } from '@/constants/order-status';
-
-const TASK_TYPE_LABEL: Record<string, string> = {
-  preparation: 'Chuẩn bị',
-  installation: 'Thi công / Lắp đặt',
-  transport: 'Vận chuyển',
-  collection: 'Thu hồi',
-};
-
-function humanizeTaskType(taskType: string): string {
-  return TASK_TYPE_LABEL[taskType] ?? taskType.replaceAll('_', ' ');
-}
 
 function greetingForNow(): string {
   const hour = new Date().getHours();
@@ -94,6 +86,7 @@ export default function Page() {
   const [stats, setStats] = useState<ManagerDashboardStats | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [tasks, setTasks] = useState<WorkTask[]>([]);
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [changeRequests, setChangeRequests] = useState<ChangeRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [viewDate, setViewDate] = useState(() => new Date());
@@ -104,11 +97,13 @@ export default function Page() {
       reportApiService.getManagerDashboard(),
       orderApiService.getOrders({ limit: 5 }),
       workTaskApiService.getTasks({ limit: 100 }),
+      schedulePlanApiService.getSchedules({ limit: 100 }),
       changeRequestApiService.getChangeRequests({ status: 'pending', limit: 5 }),
-    ]).then(([dashboardRes, ordersRes, tasksRes, changeRequestsRes]) => {
+    ]).then(([dashboardRes, ordersRes, tasksRes, schedulesRes, changeRequestsRes]) => {
       setStats(dashboardRes.data);
       setOrders(ordersRes.data);
       setTasks(tasksRes.data);
+      setSchedules(schedulesRes.data);
       setChangeRequests(changeRequestsRes.data);
     });
   };
@@ -168,16 +163,16 @@ export default function Page() {
     }
 
     for (const task of tasks) {
-      if (task.status !== 'completed') continue;
+      if (task.status !== 'done') continue;
       const order = orderById.get(task.orderId);
       feedItems.push({
         key: `task-${task.workTaskId}`,
-        time: new Date(task.scheduledStart).getTime(),
+        time: new Date(task.updatedAt).getTime(),
         icon: CheckCircle2,
         iconColor: 'green',
         message: (
           <>
-            Công việc <span className="font-medium text-slate-700">{humanizeTaskType(task.taskType)}</span> cho đơn{' '}
+            Công việc <span className="font-medium text-slate-700">{task.title}</span> cho đơn{' '}
             <span className="font-medium text-slate-700">#{order?.orderId ?? task.orderId}</span> đã hoàn thành.
           </>
         ),
@@ -215,57 +210,60 @@ export default function Page() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.25 }}
-      className="min-h-full bg-[#F8FAFC] p-8"
+      className="min-h-full bg-slate-50 p-6"
     >
       {/* Section 1 — Greeting + Quick Actions */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
             {greetingForNow()}, {user?.fullName ?? 'Quản lý'}
           </h1>
-          <p className="mt-2 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-slate-500">
             <span className="capitalize">{todayLabel}</span> · Dưới đây là tổng quan vận hành hôm nay.
           </p>
         </div>
         <Link
           href="/manager/orders"
-          className="inline-flex h-11 flex-shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white transition-colors duration-150 hover:bg-blue-700"
+          className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-colors duration-150 hover:bg-blue-700"
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-3.5 w-3.5" />
           Tạo đơn hàng
         </Link>
       </div>
 
       {isLoading || !stats ? (
-        <p className="mt-8 text-sm text-slate-400">Đang tải...</p>
+        <p className="mt-6 text-sm text-slate-400">Đang tải...</p>
       ) : (
-        <div className="mt-8 flex flex-col gap-8">
+        <div className="mt-6 flex flex-col gap-6">
           {/* Section 2 — KPI Cards */}
           <DashboardStats items={items} />
 
-          {/* Section 3 — Schedule (70%) + Pending Requests (30%) */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
-            <div className="lg:col-span-7">
+          {/* Section 3 — Lịch trình + Hoạt động gần đây (8) / Yêu cầu chờ xử lý (4) */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+            <div className="flex flex-col gap-6 lg:col-span-8">
               <ScheduleTimeline
                 viewDate={viewDate}
                 selectedDate={selectedDate}
                 onViewDateChange={setViewDate}
                 onSelectedDateChange={setSelectedDate}
-                tasks={tasks}
+                schedules={schedules}
                 alertedTaskIds={alertedTaskIds}
                 orderById={orderById}
                 scheduleHref="/manager/schedule/plans"
               />
+              <ActivityFeed items={activityFeed} />
             </div>
 
-            <div className="lg:col-span-3">
-              <div className="flex h-full flex-col overflow-hidden rounded-2xl bg-white shadow-md">
-                <div className="border-b border-slate-100 px-5 py-5">
-                  <h3 className="text-lg font-semibold text-slate-900">Yêu cầu chờ xử lý</h3>
-                  <p className="mt-0.5 text-sm text-slate-400">Cần bạn phê duyệt ({changeRequests.length})</p>
+            <div className="lg:col-span-4">
+              <div className="flex h-full flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-amber-500">
+                    <MessageSquare className="h-3 w-3" />
+                  </span>
+                  <h3 className="text-sm font-bold text-slate-800">Yêu cầu chờ xử lý</h3>
                 </div>
 
-                <div className="flex-1 space-y-3 p-4">
+                <div className="mt-4 flex-1 space-y-3">
                   {changeRequests.length === 0 && (
                     <p className="py-6 text-center text-sm text-slate-400">Không có yêu cầu nào chờ xử lý.</p>
                   )}
@@ -280,20 +278,15 @@ export default function Page() {
                   ))}
                 </div>
 
-                <div className="border-t border-slate-100 p-4">
-                  <Link
-                    href="/manager/field-ops/change-requests"
-                    className="flex items-center justify-center rounded-xl border border-slate-200 py-2.5 text-xs font-medium text-slate-600 transition-colors duration-150 hover:bg-slate-50"
-                  >
-                    Xem tất cả yêu cầu
-                  </Link>
-                </div>
+                <Link
+                  href="/manager/field-ops/change-requests"
+                  className="mt-4 flex items-center justify-center rounded-lg border border-slate-200 py-2.5 text-xs font-medium text-slate-600 transition-colors duration-150 hover:bg-slate-50"
+                >
+                  Xem tất cả yêu cầu
+                </Link>
               </div>
             </div>
           </div>
-
-          {/* Hoạt động gần đây */}
-          <ActivityFeed items={activityFeed} />
 
           {/* Section 4 — Analytics */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

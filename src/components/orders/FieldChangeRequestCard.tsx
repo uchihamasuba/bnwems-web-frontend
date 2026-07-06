@@ -44,7 +44,7 @@ export default function FieldChangeRequestCard({
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: '-40px' }}
         transition={{ duration: 0.25 }}
-        className="rounded-2xl border border-slate-100 bg-white p-6 text-sm text-slate-400 shadow-md"
+        className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-400 shadow-xs"
       >
         Không có yêu cầu thay đổi từ hiện trường.
       </motion.div>
@@ -57,7 +57,7 @@ export default function FieldChangeRequestCard({
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-40px' }}
       transition={{ duration: 0.25 }}
-      className="rounded-2xl border border-orange-200 bg-orange-50 p-6 shadow-md"
+      className="rounded-xl border border-orange-200 bg-orange-50 p-5 shadow-xs"
     >
       <div className="mb-3 flex items-center gap-2">
         <AlertTriangle className="h-4 w-4 text-orange-500" />

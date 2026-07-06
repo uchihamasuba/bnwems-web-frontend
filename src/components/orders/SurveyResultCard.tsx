@@ -21,9 +21,9 @@ export default function SurveyResultCard({ report, surveyorName, isLoading }: Re
         <div className="space-y-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <Avatar name={report.surveyedBy ?? surveyorName ?? 'KSV'} size="md" />
+              <Avatar name={report.surveyedBy?.fullName ?? surveyorName ?? 'KSV'} size="md" />
               <div>
-                <p className="text-sm font-semibold text-slate-900">{report.surveyedBy ?? surveyorName ?? 'Khảo sát viên'}</p>
+                <p className="text-sm font-semibold text-slate-900">{report.surveyedBy?.fullName ?? surveyorName ?? 'Khảo sát viên'}</p>
                 <p className="text-xs text-slate-400">
                   Khảo sát lúc {formatTime(report.submittedAt)} - {formatDate(report.submittedAt)}
                 </p>

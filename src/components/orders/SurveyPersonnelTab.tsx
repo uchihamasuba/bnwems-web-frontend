@@ -23,6 +23,10 @@ interface SurveyPersonnelTabProps {
 
 type AssignMode = 'survey' | 'execution';
 
+function removeCrById(id: string) {
+  return (prev: ChangeRequest[]) => prev.filter((cr) => cr.changeRequestId !== id);
+}
+
 export default function SurveyPersonnelTab({ orderId, canManage }: Readonly<SurveyPersonnelTabProps>) {
   const [tasks, setTasks] = useState<WorkTask[]>([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
@@ -48,6 +52,7 @@ export default function SurveyPersonnelTab({ orderId, canManage }: Readonly<Surv
     workTaskApiService
       .getTasks({ orderId })
       .then((res) => setTasks(res.data ?? []))
+      .catch((err) => console.error('[tasks]', err?.response?.data ?? err))
       .finally(() => setIsLoadingTasks(false));
   }, [orderId]);
 
@@ -68,8 +73,8 @@ export default function SurveyPersonnelTab({ orderId, canManage }: Readonly<Surv
       .catch(() => setChangeRequests([]));
   }, [orderId]);
 
-  // Báo cáo khảo sát phụ thuộc danh sách task (suy ra task khảo sát).
-  const surveyTask = tasks.find((t) => t.taskType === 'survey');
+  // Báo cáo khảo sát phụ thuộc danh sách task (suy ra task khảo sát theo taskCategory thật).
+  const surveyTask = tasks.find((t) => t.taskCategory === 'survey');
   const surveyTaskId = surveyTask?.workTaskId ?? null;
 
   useEffect(() => {
@@ -91,13 +96,9 @@ export default function SurveyPersonnelTab({ orderId, canManage }: Readonly<Surv
     };
   }, [surveyTaskId, isLoadingTasks]);
 
-  const executionTasks = tasks.filter((t) => t.taskType !== 'survey');
+  const executionTasks = tasks.filter((t) => t.taskCategory !== 'survey');
 
-  const executionTaskId =
-    assignments?.execution?.taskId ??
-    tasks.find((t) => t.taskType === 'installation')?.workTaskId ??
-    executionTasks[0]?.workTaskId ??
-    null;
+  const executionTaskId = assignments?.execution?.taskId ?? executionTasks[0]?.workTaskId ?? null;
 
   const reassignSurveyTaskId = assignments?.survey?.taskId ?? surveyTaskId;
 
@@ -107,10 +108,12 @@ export default function SurveyPersonnelTab({ orderId, canManage }: Readonly<Surv
       return { ...existing, members: replace ? [member] : [...existing.members, member] };
     }
     const task = tasks.find((t) => t.workTaskId === taskId);
+    // WorkTask thật không có scheduledStart/End (docs/more-require.md mục bb) — tạm dùng createdAt
+    // cho cả 2 mốc vì AssignmentGroup (mock-only, types/assignment.ts) vẫn cần 1 giá trị hiển thị.
     return {
       taskId,
-      scheduledStart: task?.scheduledStart ?? '',
-      scheduledEnd: task?.scheduledEnd ?? '',
+      scheduledStart: task?.createdAt ?? '',
+      scheduledEnd: task?.createdAt ?? '',
       members: [member],
     };
   };
@@ -132,7 +135,8 @@ export default function SurveyPersonnelTab({ orderId, canManage }: Readonly<Surv
     setCrSubmittingId(id);
     changeRequestApiService
       .approveChangeRequest(id, status)
-      .then(() => setChangeRequests((prev) => prev.filter((cr) => cr.changeRequestId !== id)))
+      .then(() => setChangeRequests(removeCrById(id)))
+      .catch((err) => console.error('[approveChangeRequest]', err?.response?.data ?? err))
       .finally(() => setCrSubmittingId(null));
   };
 

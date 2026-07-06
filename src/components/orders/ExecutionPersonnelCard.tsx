@@ -29,7 +29,7 @@ export default function ExecutionPersonnelCard({
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-40px' }}
       transition={{ duration: 0.25 }}
-      className="rounded-2xl bg-white p-6 shadow-md"
+      className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs"
     >
       <div className="flex items-center justify-between">
         <h3 className="text-base font-semibold text-slate-900">Phân công nhân sự thi công</h3>

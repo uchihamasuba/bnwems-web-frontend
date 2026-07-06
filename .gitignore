@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+docs/bnwems-manager-portal/node_modules/
 /.pnp
 .pnp.*
 .yarn/*

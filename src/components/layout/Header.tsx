@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Bell, HelpCircle, Search, ChevronDown, UserCircle, KeyRound, LogOut } from 'lucide-react';
+import { Bell, HelpCircle, Search, UserCircle, KeyRound, LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Input } from '@/components/ui/Input';
 
@@ -33,12 +33,12 @@ export default function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-100 bg-white px-6">
-      <div className="w-80">
+    <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-slate-100 bg-white px-6 shadow-xs">
+      <div className="w-64">
         <Input
           placeholder="Tìm kiếm hệ thống..."
           icon={<Search className="h-4 w-4" />}
-          className="border-slate-200 bg-slate-50 shadow-none transition-colors duration-150 focus:bg-white"
+          className="!rounded-full !py-1.5 !text-xs border-slate-200 bg-slate-50 shadow-none transition-colors duration-150 focus:bg-white"
         />
       </div>
       <div className="flex items-center gap-1">
@@ -48,10 +48,10 @@ export default function Header() {
           className="relative flex h-10 w-10 items-center justify-center rounded-full text-slate-400 transition-colors duration-150 hover:bg-slate-50 hover:text-slate-600"
         >
           <Bell className="h-5 w-5" />
-          {/* Số tĩnh — docs/api/ chưa có endpoint danh sách thông báo, chưa thể lấy số thật */}
-          <span className="absolute right-2 top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white ring-2 ring-white">
-            3
-          </span>
+          {/* Chấm báo hiệu thay vì số đếm — docs/api/ chưa có endpoint danh sách thông báo nên chưa
+              có số thật; hiện trạng thái "có thông báo" thay vì bịa 1 con số cụ thể. */}
+          <span className="absolute right-2.5 top-2.5 h-2 w-2 animate-ping rounded-full bg-red-500" />
+          <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-red-500" />
         </button>
         <button
           type="button"
@@ -60,19 +60,16 @@ export default function Header() {
         >
           <HelpCircle className="h-5 w-5" />
         </button>
-        <div className="mx-2 h-6 w-px bg-slate-200" />
 
-        <div ref={menuRef} className="relative">
+        <div ref={menuRef} className="relative ml-1">
           <button
             type="button"
             onClick={() => setIsMenuOpen((open) => !open)}
-            className="flex items-center gap-2 rounded-full p-1 pr-2.5 transition-colors duration-150 hover:bg-slate-50"
+            className="flex items-center rounded-full p-0.5 transition-colors duration-150 hover:bg-slate-50"
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
               {user?.fullName?.charAt(0) ?? '?'}
             </div>
-            <span className="text-sm font-medium text-slate-700">{user?.fullName ?? 'Khách'}</span>
-            <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform duration-150 ${isMenuOpen ? 'rotate-180' : ''}`} />
           </button>
 
           <AnimatePresence>

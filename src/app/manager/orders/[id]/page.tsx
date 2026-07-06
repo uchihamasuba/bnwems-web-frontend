@@ -11,6 +11,9 @@ import FinalQuotation from '@/components/orders/FinalQuotation';
 import PaymentHistoryCard from '@/components/orders/PaymentHistoryCard';
 import SettlementSummaryCard from '@/components/orders/SettlementSummaryCard';
 import RequestPaymentModal from '@/components/orders/RequestPaymentModal';
+import CancelOrderModal from '@/components/orders/CancelOrderModal';
+import EditOrderModal from '@/components/orders/EditOrderModal';
+import ChangeEventDateModal from '@/components/orders/ChangeEventDateModal';
 import SurveyPersonnelTab from '@/components/orders/SurveyPersonnelTab';
 import OrderStatusHistoryTab from '@/components/orders/OrderStatusHistoryTab';
 import { orderApiService } from '@/services/order.service';
@@ -55,6 +58,9 @@ export default function Page() {
     isOpen: false,
     mode: 'request',
   });
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isChangeDateModalOpen, setIsChangeDateModalOpen] = useState(false);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag toggled before/after the fetch below, not a render loop
@@ -69,13 +75,19 @@ export default function Page() {
       .finally(() => setIsLoading(false));
   }, [id]);
 
+  const [quotationRefreshToken, setQuotationRefreshToken] = useState(0);
+
   useEffect(() => {
-    quotationApiService.getOrderQuotations(id).then((res) => {
-      const list = res.data ?? [];
-      const latest = list.at(-1);
-      setQuotationTotal(latest ? latest.totalAmount : null);
-    });
-  }, [id]);
+    quotationApiService
+      .getOrderQuotations(id)
+      .then((res) => {
+        const list = res.data ?? [];
+        // getOrderQuotations sắp version desc — phần tử đầu (không phải cuối) là phiên bản mới nhất.
+        const latest = list[0];
+        setQuotationTotal(latest ? latest.totalAmount : null);
+      })
+      .catch((err) => console.error('[quotations]', err?.response?.data ?? err));
+  }, [id, quotationRefreshToken]);
 
   useEffect(() => {
     // Mock-only — backend không có GET cho settlement theo orderId, xem docs/more-require.md (a).
@@ -90,12 +102,17 @@ export default function Page() {
     paymentApiService
       .getPaymentsByOrder(id)
       .then((res) => setPayments(res.data ?? []))
+      .catch((err) => console.error('[payments]', err?.response?.data ?? err))
       .finally(() => setIsLoadingPayments(false));
   }, [id, paymentsRefreshToken]);
 
   const refreshPayments = () => setPaymentsRefreshToken((t) => t + 1);
 
   const totalCollected = payments.filter((p) => p.status === 'success').reduce((sum, p) => sum + Number(p.amount), 0);
+
+  const refreshOrder = () => {
+    orderApiService.getOrder(id).then((res) => setOrder(res.data));
+  };
 
   const handleConfirmSettlement = async () => {
     if (!settlementPreview) return;
@@ -133,7 +150,14 @@ export default function Page() {
 
   return (
     <div className="p-6">
-      <OrderDetailHeader order={order} customerName={customer.fullName} />
+      <OrderDetailHeader
+        order={order}
+        customerName={customer.fullName}
+        canManage={canManage}
+        onCancelOrder={() => setIsCancelModalOpen(true)}
+        onEditOrder={() => setIsEditModalOpen(true)}
+        onChangeEventDate={() => setIsChangeDateModalOpen(true)}
+      />
 
       <div className="mb-8">
         <OrderLifecycleStepper status={order.status} />
@@ -155,7 +179,9 @@ export default function Page() {
         </div>
       )}
 
-      {activeTab === 'quotation' && <FinalQuotation orderId={id} />}
+      {activeTab === 'quotation' && (
+        <FinalQuotation orderId={id} canManage={canManage} onQuotationChanged={() => setQuotationRefreshToken((t) => t + 1)} />
+      )}
 
       {activeTab === 'settlement' && (
         <div className="space-y-6">
@@ -191,6 +217,30 @@ export default function Page() {
         mode={paymentModal.mode}
         onClose={() => setPaymentModal((m) => ({ ...m, isOpen: false }))}
         onSuccess={refreshPayments}
+      />
+
+      <CancelOrderModal
+        isOpen={isCancelModalOpen}
+        order={order}
+        customerName={customer.fullName}
+        depositCollected={totalCollected}
+        onClose={() => setIsCancelModalOpen(false)}
+        onSuccess={refreshOrder}
+      />
+
+      <EditOrderModal
+        isOpen={isEditModalOpen}
+        order={order}
+        customerName={customer.fullName}
+        onClose={() => setIsEditModalOpen(false)}
+        onSuccess={refreshOrder}
+      />
+
+      <ChangeEventDateModal
+        isOpen={isChangeDateModalOpen}
+        order={order}
+        onClose={() => setIsChangeDateModalOpen(false)}
+        onSuccess={refreshOrder}
       />
     </div>
   );

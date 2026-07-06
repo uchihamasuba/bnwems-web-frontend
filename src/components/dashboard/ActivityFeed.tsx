@@ -24,8 +24,8 @@ const COLOR_CLASS: Record<ActivityFeedItem['iconColor'], string> = {
 
 export default function ActivityFeed({ items }: Readonly<ActivityFeedProps>) {
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-md">
-      <h3 className="text-lg font-semibold text-slate-900">Hoạt động gần đây</h3>
+    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+      <h3 className="text-sm font-bold text-slate-800">Hoạt động gần đây</h3>
       <div className="mt-5">
         {items.length === 0 ? (
           <p className="text-sm text-slate-400">Chưa có hoạt động nào.</p>

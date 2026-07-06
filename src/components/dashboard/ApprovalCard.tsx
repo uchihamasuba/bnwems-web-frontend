@@ -29,9 +29,8 @@ export default function ApprovalCard({ changeRequest, order, onApprove, onReject
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      whileHover={{ y: -2 }}
       transition={{ duration: 0.15 }}
-      className="rounded-xl border border-slate-100 p-4 transition-shadow duration-150 hover:shadow-md"
+      className="rounded-xl border border-slate-100 bg-slate-50 p-4 shadow-xs"
     >
       <div className="flex items-center justify-between">
         <span className="rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-600">

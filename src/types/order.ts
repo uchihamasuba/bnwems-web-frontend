@@ -24,12 +24,12 @@ export interface Order {
   orderId: string;
   orderNumber?: string;  // (*) BR-11-01 chưa implement → mock: ORD-{year}-{id} (mục t)
   customerId: string;
-  eventType?: string;    // (*) chưa có cột trong DB → mock từ orderId (mục u)
+  eventType?: string;    // field thật (mục u đã triển khai) — undefined ở các order tạo trước đó
   eventDate: string;
-  eventEndDate?: string; // (*) chưa có cột trong DB → mock: eventDate+1 ngày (mục s)
+  eventEndDate?: string; // field thật (mục s đã triển khai) — undefined nếu để trống lúc tạo
   venueName?: string;    // (*) chưa có cột riêng → mock: split eventLocation (mục v)
   eventLocation: string;
-  guestCount?: number;   // (*) chưa có cột trong DB → mock: deterministic (mục w)
+  guestCount?: number;   // field thật (mục w đã triển khai) — undefined nếu để trống lúc tạo
   status: OrderStatus;
   createdAt: string;
 }
@@ -41,12 +41,38 @@ export interface OrderDetail extends Order {
 }
 
 // POST /api/v1/orders
-// eventEndDate: backend thật CHƯA có cột lưu field này (xem docs/more-require.md mục (s)) — gửi
-// kèm tạm thời không gây lỗi (controller chỉ destructure customerId/eventDate/venueAddress nên
-// field thừa bị bỏ qua), nhưng dữ liệu sẽ KHÔNG được lưu lại cho tới khi backend thêm cột.
+// customerId/eventDate bắt buộc; venueAddress optional theo createOrderSchema thật nhưng vẫn bắt
+// buộc ở FE (quy tắc nghiệp vụ: 1 đơn hàng sự kiện cần địa điểm). eventEndDate/eventType/guestCount
+// đã được backend lưu thật (mục s/u/w docs/more-require.md) — không còn là field bị bỏ qua.
 export interface CreateOrderPayload {
   customerId: string;
   eventDate: string;
   venueAddress: string;
   eventEndDate?: string;
+  eventType?: string;
+  guestCount?: number;
+}
+
+// PUT /api/v1/orders/:id/cancel — endpoint CHƯA tồn tại ở backend thật (order.route.ts chỉ có
+// confirm/change-date/close), suy ra theo đúng convention của 3 endpoint lifecycle đó. Xem
+// docs/more-require.md mục (y) — sẽ 404 cho tới khi backend bổ sung route + service tương ứng.
+export interface CancelOrderPayload {
+  reason: string;
+}
+
+// PUT /api/v1/orders/:id — endpoint CHƯA tồn tại ở backend thật (order.route.ts chỉ có
+// confirm/change-date/close), suy theo REST convention chung (khác cancelOrder — suy được vì đúng
+// convention URL của 3 lifecycle endpoint có sẵn). Xem docs/more-require.md mục (z) — sẽ 404 cho
+// tới khi backend bổ sung route + validator + controller + service tương ứng.
+export interface UpdateOrderPayload {
+  eventType?: string;
+  eventEndDate?: string;
+  venueAddress?: string;
+  guestCount?: number;
+}
+
+// PUT /api/v1/orders/:id/change-date — endpoint có thật. Field thật là `newEventDate`
+// (docs/api/09-orders.md ghi nhầm `newEventStartDate` — xem docs/more-require.md mục (z)).
+export interface ChangeOrderDatePayload {
+  newEventDate: string;
 }

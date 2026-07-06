@@ -1,6 +1,6 @@
 import AnalyticsCard from '@/components/dashboard/AnalyticsCard';
 import { Badge } from '@/components/ui/Badge';
-import { TASK_STATUS_META, taskTypeMeta } from './surveyPersonnel.constants';
+import { TASK_STATUS_META, taskCategoryIcon } from './surveyPersonnel.constants';
 import type { WorkTask } from '@/types/workTask';
 
 interface ExecutionTrackingCardProps {
@@ -15,7 +15,7 @@ function TaskList({ tasks }: Readonly<{ tasks: WorkTask[] }>) {
   return (
     <div className="space-y-3">
       {tasks.map((task) => {
-        const { label, Icon } = taskTypeMeta(task.taskType);
+        const Icon = taskCategoryIcon(task.taskCategory);
         const status = TASK_STATUS_META[task.status] ?? { label: task.status, variant: 'neutral' as const };
         return (
           <div key={task.workTaskId} className="flex items-center justify-between gap-3">
@@ -23,7 +23,7 @@ function TaskList({ tasks }: Readonly<{ tasks: WorkTask[] }>) {
               <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
                 <Icon className="h-4 w-4" />
               </span>
-              <span className="text-sm font-medium text-slate-700">{label}</span>
+              <span className="text-sm font-medium text-slate-700">{task.title}</span>
             </div>
             <Badge variant={status.variant}>{status.label}</Badge>
           </div>

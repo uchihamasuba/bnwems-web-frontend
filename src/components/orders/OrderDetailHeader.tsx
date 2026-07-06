@@ -9,9 +9,21 @@ import type { OrderDetail } from '@/types/order';
 interface OrderDetailHeaderProps {
   order: OrderDetail;
   customerName: string;
+  canManage: boolean;
+  onCancelOrder: () => void;
+  onEditOrder: () => void;
+  onChangeEventDate: () => void;
 }
 
-export default function OrderDetailHeader({ order, customerName }: Readonly<OrderDetailHeaderProps>) {
+export default function OrderDetailHeader({
+  order,
+  customerName,
+  canManage,
+  onCancelOrder,
+  onEditOrder,
+  onChangeEventDate,
+}: Readonly<OrderDetailHeaderProps>) {
+  const canModifyOrder = canManage && order.status !== 'cancelled' && order.status !== 'completed';
   return (
     <div className="mb-6 flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -45,18 +57,22 @@ export default function OrderDetailHeader({ order, customerName }: Readonly<Orde
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" title="Tính năng đang phát triển">
-            <Pencil className="h-4 w-4" />
-            Sửa đơn hàng
-          </Button>
-          <Button variant="secondary" size="sm" title="Tính năng đang phát triển">
-            <CalendarClock className="h-4 w-4" />
-            Đổi ngày sự kiện
-          </Button>
-          <Button variant="danger" size="sm" title="Tính năng đang phát triển">
-            <Ban className="h-4 w-4" />
-            Hủy đơn hàng
-          </Button>
+          {canModifyOrder && (
+            <>
+              <Button variant="secondary" size="sm" onClick={onEditOrder}>
+                <Pencil className="h-4 w-4" />
+                Sửa đơn hàng
+              </Button>
+              <Button variant="secondary" size="sm" onClick={onChangeEventDate}>
+                <CalendarClock className="h-4 w-4" />
+                Đổi ngày sự kiện
+              </Button>
+              <Button variant="danger" size="sm" onClick={onCancelOrder}>
+                <Ban className="h-4 w-4" />
+                Hủy đơn hàng
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </div>

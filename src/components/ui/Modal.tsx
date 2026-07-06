@@ -7,14 +7,16 @@ interface ModalProps {
   onClose: () => void;
   title?: string;
   subtitle?: string;
-  size?: 'md' | 'lg';
+  size?: 'md' | 'lg' | 'xl' | '2xl';
   children: React.ReactNode;
   footer?: React.ReactNode;
 }
 
-const sizeClasses: Record<'md' | 'lg', string> = {
+const sizeClasses: Record<'md' | 'lg' | 'xl' | '2xl', string> = {
   md: 'max-w-lg',
   lg: 'max-w-2xl',
+  xl: 'max-w-4xl',
+  '2xl': 'max-w-6xl',
 };
 
 export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, subtitle, size = 'md', children, footer }) => {
@@ -31,7 +33,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, subtitle, 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-      <div className={`w-full ${sizeClasses[size]} rounded-xl bg-white p-6 shadow-lg`}>
+      <div className={`w-full ${sizeClasses[size]} max-h-[90vh] overflow-y-auto rounded-xl bg-white p-6 shadow-lg`}>
         {title && (
           <div className="mb-4 flex items-start justify-between">
             <div>

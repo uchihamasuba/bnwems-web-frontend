@@ -17,8 +17,7 @@ export default function AnalyticsCard({ title, subtitle, isPlaceholder, children
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-40px' }}
       transition={{ duration: 0.25 }}
-      whileHover={{ y: -2 }}
-      className="rounded-2xl bg-white p-6 shadow-md transition-shadow duration-200 hover:shadow-xl"
+      className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs"
     >
       <div className="flex items-start justify-between gap-2">
         <div>

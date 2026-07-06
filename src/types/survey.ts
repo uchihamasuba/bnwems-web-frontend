@@ -7,10 +7,15 @@ export interface SurveyEvidence {
   fileUrl: string;
 }
 
+export interface SurveyReportAuthor {
+  userId: string;
+  fullName: string;
+}
+
 export interface SurveyReport {
   workTaskId: string;
   notes: string;
   evidences: SurveyEvidence[];
   submittedAt: string;
-  surveyedBy?: string; // MOCK-ONLY (xem more-require.md mục o)
+  surveyedBy?: SurveyReportAuthor; // backend trả { userId, fullName } (task.service.ts viewSurveyReport)
 }

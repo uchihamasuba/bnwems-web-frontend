@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import {
   Plus,
   Eye,
@@ -24,17 +23,18 @@ import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import DashboardStats, { KpiCardItem } from '@/components/reports/DashboardStats';
 import CreateOrderModal from '@/components/orders/CreateOrderModal';
+import OrderStatusBadge from '@/components/orders/OrderStatusBadge';
 import { usePagination } from '@/hooks/usePagination';
 import { formatDate } from '@/utils/formatDate';
 import { ORDER_STATUS_LABEL } from '@/constants/order-status';
+import { EVENT_TYPES } from '@/constants/order-event-type';
 import type { Order } from '@/types/order';
 import type { Customer } from '@/types/customer';
 
 // ---------------------------------------------------------------------------
-// MOCK helpers — xóa và dùng field thật khi backend implement
-// (xem docs/more-require.md mục t, u, s, v, w)
+// MOCK helpers — chỉ dùng làm fallback cho order chưa có field thật (tạo trước khi backend bổ
+// sung cột, hoặc để trống lúc tạo). Xem docs/more-require.md mục t, u, s, v.
 // ---------------------------------------------------------------------------
-const EVENT_TYPES = ['Tiệc cưới', 'Sự kiện công ty', 'Sinh nhật', 'Khai trương', 'Hội nghị'];
 
 function mockOrderNumber(order: Order): string {
   if (order.orderNumber) return order.orderNumber;
@@ -54,15 +54,6 @@ function mockEventEndDate(order: Order): string {
   return d.toISOString().split('T')[0];
 }
 
-const STATUS_TEXT_COLOR: Record<string, string> = {
-  draft:              'text-slate-500',
-  confirmed:          'text-blue-600',
-  in_progress:        'text-amber-600',
-  completed:          'text-green-600',
-  cancelled:          'text-red-500',
-  deposit_paid:       'text-green-600',
-  settlement_pending: 'text-amber-600',
-};
 // ---------------------------------------------------------------------------
 
 const STATUS_OPTIONS = Object.entries(ORDER_STATUS_LABEL).map(([value, label]) => ({ value, label }));
@@ -75,7 +66,6 @@ interface OrderCounts {
 }
 
 export default function Page() {
-  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [counts, setCounts] = useState<OrderCounts | null>(null);
@@ -223,8 +213,8 @@ export default function Page() {
       key: 'eventType',
       label: 'Loại sự kiện',
       render: (row) => (
-        // MOCK — xóa mock khi backend trả eventType thật (more-require.md mục u)
-        <span className="text-sm font-medium text-indigo-600">
+        // in nghiêng chỉ khi order chưa có eventType thật (order cũ hoặc để trống lúc tạo)
+        <span className={`text-sm font-medium text-indigo-600 ${row.eventType ? '' : 'italic text-slate-400'}`}>
           {mockEventType(row)}
         </span>
       ),
@@ -238,8 +228,8 @@ export default function Page() {
       key: 'eventEndDate',
       label: 'Ngày kết thúc',
       render: (row) => (
-        // MOCK — xóa mock khi backend trả eventEndDate thật (more-require.md mục s)
-        <span className="whitespace-nowrap text-sm italic text-slate-400">
+        // in nghiêng chỉ khi order chưa có eventEndDate thật (order cũ hoặc để trống lúc tạo)
+        <span className={`whitespace-nowrap text-sm ${row.eventEndDate ? 'text-slate-600' : 'italic text-slate-400'}`}>
           {formatDate(mockEventEndDate(row))}
         </span>
       ),
@@ -256,11 +246,8 @@ export default function Page() {
     {
       key: 'status',
       label: 'Trạng thái',
-      render: (row) => (
-        <span className={`text-sm font-medium ${STATUS_TEXT_COLOR[row.status] ?? 'text-slate-500'}`}>
-          {ORDER_STATUS_LABEL[row.status] ?? row.status}
-        </span>
-      ),
+      className: 'whitespace-nowrap',
+      render: (row) => <OrderStatusBadge status={row.status} />,
     },
     {
       key: 'createdAt',
@@ -302,9 +289,8 @@ export default function Page() {
         <DashboardStats items={kpiItems} />
       </div>
 
-      {/* Filter + Table card */}
-      <div className="mt-6 rounded-xl bg-white p-4 shadow-sm">
-        {/* Filter bar */}
+      {/* Filter bar */}
+      <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
         <div className="flex flex-wrap items-end gap-3">
           {/* Search — disabled cho đến khi backend có cột orderNumber (more-require.md mục t) */}
           <div className="relative w-56">
@@ -365,9 +351,11 @@ export default function Page() {
             </Button>
           </div>
         </div>
+      </div>
 
-        {/* Table — cuộn ngang vì có nhiều cột */}
-        <div className="mt-4 overflow-x-auto">
+      {/* Table card */}
+      <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
+        <div className="overflow-x-auto">
           <Table columns={columns} rows={orders} rowKey={(row) => row.orderId} isLoading={isLoading} />
         </div>
         <Pagination pagination={pagination} onPageChange={setPage} />
@@ -377,9 +365,9 @@ export default function Page() {
         isOpen={isCreateOpen}
         customers={customers}
         onClose={() => setIsCreateOpen(false)}
-        onCreated={(orderId) => {
+        onCreated={() => {
           setIsCreateOpen(false);
-          router.push(`/manager/orders/${orderId}`);
+          handleRefresh();
         }}
       />
     </div>

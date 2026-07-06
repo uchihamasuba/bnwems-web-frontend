@@ -1,5 +1,5 @@
 import api from './api';
-import type { CreateOrderPayload } from '@/types/order';
+import type { CancelOrderPayload, ChangeOrderDatePayload, CreateOrderPayload, UpdateOrderPayload } from '@/types/order';
 
 export interface GetOrdersQuery {
   page?: number;
@@ -26,6 +26,30 @@ export const orderApiService = {
   /** POST /api/v1/orders (UC 2.11) */
   async createOrder(payload: CreateOrderPayload) {
     const response = await api.post('/orders', payload);
+    return response.data;
+  },
+
+  /**
+   * PUT /api/v1/orders/{id}/cancel — endpoint suy theo convention confirm/change-date/close,
+   * CHƯA có ở backend thật (docs/more-require.md mục y). Sẽ trả 404 cho tới khi backend bổ sung.
+   */
+  async cancelOrder(id: string, payload: CancelOrderPayload) {
+    const response = await api.put(`/orders/${id}/cancel`, payload);
+    return response.data;
+  },
+
+  /**
+   * PUT /api/v1/orders/{id} — endpoint suy theo REST convention chung, CHƯA có ở backend thật
+   * (docs/more-require.md mục z). Sẽ trả 404 cho tới khi backend bổ sung.
+   */
+  async updateOrder(id: string, payload: UpdateOrderPayload) {
+    const response = await api.put(`/orders/${id}`, payload);
+    return response.data;
+  },
+
+  /** PUT /api/v1/orders/{id}/change-date (UC 2.11) */
+  async changeOrderDate(id: string, payload: ChangeOrderDatePayload) {
+    const response = await api.put(`/orders/${id}/change-date`, payload);
     return response.data;
   },
 };
