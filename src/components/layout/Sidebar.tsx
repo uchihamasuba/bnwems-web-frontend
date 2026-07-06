@@ -46,7 +46,7 @@ const MANAGER_NAV: NavItem[] = [
   { label: 'Đơn hàng', href: '/manager/orders', icon: ShoppingBag },
   { label: 'Khảo sát', href: '/manager/survey', icon: MapPin },
   { label: 'Lịch trình', href: '/manager/schedule/plans', icon: Calendar },
-  { label: 'Tồn kho', href: '/manager/inventory/pick-lists', icon: Package },
+  { label: 'Tồn kho', href: '/manager/inventory/stock-check', icon: Package },
   { label: 'Nhà cung cấp', href: '/manager/suppliers', icon: Truck },
   { label: 'Mua sắm', href: '/manager/procurement', icon: ShoppingCart },
   { label: 'Hiện trường', href: '/manager/field-ops/handovers', icon: HardHat },
