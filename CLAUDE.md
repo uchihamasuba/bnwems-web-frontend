@@ -2,6 +2,18 @@
 
 # BNWEMS Web Frontend — Hướng dẫn cho Claude
 
+## 0. ƯU TIÊN HIỆN TẠI: Giai đoạn dựng giao diện thuần (tạm thời)
+
+> **Trạng thái: đang áp dụng.** Gỡ bỏ mục này (và khôi phục lại đầy đủ ràng buộc bên dưới) ngay khi dự án quay lại giai đoạn nối API/backend thật.
+
+Dự án hiện đang ở giai đoạn tập trung dựng giao diện (UI-first). Khi build màn hình mới hoặc chỉnh sửa màn hình hiện có:
+
+- **Không bắt buộc đọc `docs/api/`, không bắt buộc đối chiếu database/schema backend, không bắt buộc tra cứu "Quy tắc nghiệp vụ cốt lõi" ở mục 1** trước khi code — nội dung nghiệp vụ ở mục 1, mục 2 (Quy ước API) và mục 5 (Backend liên quan) trong file này **tạm thời chỉ mang tính tham khảo**, không phải yêu cầu bắt buộc phải tuân theo khi làm UI trong giai đoạn này.
+- Chỉ cần code giao diện khớp đúng ảnh mẫu/thiết kế do người dùng cung cấp (bố cục, màu sắc, thành phần, luồng thao tác) — theo hệ thống thiết kế ở mục 3.
+- Dữ liệu hiển thị dùng mock tùy ý cho khớp giao diện, không cần bám sát field/model backend thật. **Không bắt buộc phải hiển thị in nghiêng hay ghi vào `docs/more-require.md`** (bullet cuối mục 4 tạm ngưng áp dụng) — trừ khi người dùng yêu cầu khác cho từng trường hợp cụ thể.
+- Vẫn giữ nguyên hiệu lực: quy tắc thiết kế (mục 3) và các quy ước không liên quan tới API/backend ở mục 4 (tái dùng component dùng chung, toàn bộ text tiếng Việt, mobile-friendly, scroll-reveal, không hardcode role rời rạc ngoài `usePermission`...).
+- Khi dự án quay lại giai đoạn nối API thật, phục hồi lại toàn bộ ràng buộc ở mục 1/2/4/5 như trước.
+
 ## 1. Tổng quan dự án
 
 **BNWEMS (Binh Nguyen Wedding Event Management System)** là hệ thống quản lý nội bộ cho doanh nghiệp dịch vụ cưới hỏi/sự kiện **Bình Nguyên**, số hóa toàn bộ quy trình vận hành: từ tiếp nhận yêu cầu khách hàng → khảo sát → báo giá → đặt cọc → khóa tồn kho → điều phối nhân sự → xuất kho → thi công → nghiệm thu → thu hồi → quyết toán → hoàn kho → tính công Staff → theo dõi công nợ Supplier.

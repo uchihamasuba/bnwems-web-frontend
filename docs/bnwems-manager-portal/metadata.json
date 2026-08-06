@@ -1,6 +1,0 @@
-{
-  "name": "BNWEMS Manager Portal",
-  "description": "Binh Nguyen Wedding & Event Management System (BNWEMS) - High-fidelity management portal for operational managers, covering orders, quotations, tasks, inventory, and vendor workflows.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
