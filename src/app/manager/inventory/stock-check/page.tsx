@@ -1,408 +1,244 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { FileText, Trash2 } from 'lucide-react';
-import { orderApiService } from '@/services/order.service';
-import { customerApiService } from '@/services/customer.service';
-import { quotationApiService } from '@/services/quotation.service';
-import { catalogApiService } from '@/services/catalog.service';
-import { inventoryApiService } from '@/services/inventory.service';
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
+import { Calendar, Eye, MoreHorizontal, Search, SlidersHorizontal, Wrench } from 'lucide-react';
+import { Table, TableColumn } from '@/components/ui/Table';
+import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import type { Order } from '@/types/order';
-import type { Customer } from '@/types/customer';
-import type { Item } from '@/types/catalog';
+import { Button } from '@/components/ui/Button';
+import EquipmentDetailModal from '@/components/catalog/EquipmentDetailModal';
+import { useDebounce } from '@/hooks/useDebounce';
+import {
+  AdminEquipment,
+  EQUIPMENT_CATEGORY_OPTIONS,
+  StockLogType,
+  adjustAdminEquipmentStock,
+  getAdminEquipment,
+} from '@/mocks/adminEquipmentMock';
 
-const SOURCE_OPTIONS = [
-  { value: 'quotation', label: 'Báo giá đã duyệt' },
-  { value: 'manual', label: 'Nhập thủ công' },
-];
+// Trang thuần giao diện — xem giải thích ở đầu src/mocks/adminEquipmentMock.ts. Bố cục port từ
+// docs/components/ProductsAndEquipmentView.tsx (nhánh "Tồn kho doanh nghiệp"): số lượng khả dụng/đã
+// khóa được mô phỏng lại theo ngày chọn trên bảng (giống UC 2.13 - Date-based Inventory Lock) bằng
+// công thức seed cố định theo id sản phẩm + ngày; số lượng hỏng/tổng số lượng lấy trực tiếp từ store
+// nên không đổi theo ngày. Trang "Hỏng, mất & bảo trì" liên kết bên cạnh vẫn dùng API thật như trước.
+// Mirror của src/app/admin/inventory/stock-status/page.tsx cho vai trò Manager — dùng chung mock/service/UI.
+// Ghi chú: chưa có route /manager/inventory/maintenance nên nút "Thiết bị đang bảo trì" tạm thời vẫn
+// trỏ về /admin/inventory/maintenance (không có trang Manager tương đương trong điều hướng hiện tại).
 
-interface CheckItem {
-  rowId: string;
-  itemId: string;
-  name: string;
-  code: string;
-  unit: string;
-  required: number;
-  available: number;
-  reserved: number;
-  damaged: number;
-  shortage: number;
-  checked: boolean;
+interface SimulatedStock {
+  availableStock: number;
+  rentedStock: number;
+  maintenanceStock: number;
+  totalStock: number;
 }
 
-function buildRow(item: Item, qty: number): CheckItem {
+function getSimulatedStockForDate(equipment: AdminEquipment, dateStr: string): SimulatedStock {
+  let displayAvailable = equipment.availableStock;
+  let displayRented = equipment.rentedStock;
+  const displayMaintenance = equipment.maintenanceStock;
+
+  if (dateStr) {
+    const dateObj = new Date(dateStr);
+    const day = dateObj.getDate() || 1;
+    const month = (dateObj.getMonth() + 1) || 1;
+    const year = dateObj.getFullYear() || 2026;
+
+    const allocatable = equipment.availableStock + equipment.rentedStock;
+    if (allocatable > 0) {
+      const seed = (equipment.id.charCodeAt(equipment.id.length - 1) || 0) + day + month * 7 + year;
+      const rentedPercent = 5 + (seed % 81); // 5% đến 85%
+      const simulatedRented = Math.round((allocatable * rentedPercent) / 100);
+      displayRented = Math.max(0, Math.min(allocatable, simulatedRented));
+      displayAvailable = allocatable - displayRented;
+    } else {
+      displayRented = 0;
+      displayAvailable = 0;
+    }
+  }
+
   return {
-    rowId: `${item.itemId}-${Date.now()}`,
-    itemId: item.itemId,
-    name: item.itemName,
-    code: item.itemCode,
-    unit: item.unit,
-    required: qty,
-    available: 0,
-    reserved: 0,
-    damaged: 0,
-    shortage: 0,
-    checked: false,
+    availableStock: displayAvailable,
+    rentedStock: displayRented,
+    maintenanceStock: displayMaintenance,
+    totalStock: displayAvailable + displayRented + displayMaintenance,
   };
 }
 
-function blankRow(): CheckItem {
-  return {
-    rowId: `manual-${Date.now()}`,
-    itemId: '',
-    name: 'Thiết bị mới',
-    code: '',
-    unit: 'Cái',
-    required: 1,
-    available: 0,
-    reserved: 0,
-    damaged: 0,
-    shortage: 0,
-    checked: false,
-  };
+function todayStr(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
-export default function Page() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [isLoadingOrders, setIsLoadingOrders] = useState(true);
+export default function ManagerStockCheckPage() {
+  const [equipment, setEquipment] = useState<AdminEquipment[]>(() => getAdminEquipment());
+  const [searchInput, setSearchInput] = useState('');
+  const search = useDebounce(searchInput, 300);
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [selectedDate, setSelectedDate] = useState(todayStr());
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [onlyMaintenance, setOnlyMaintenance] = useState(false);
+  const [viewingEquipment, setViewingEquipment] = useState<AdminEquipment | null>(null);
 
-  const [selectedOrderId, setSelectedOrderId] = useState('');
-  const [eventDate, setEventDate] = useState('');
-  const [source, setSource] = useState('quotation');
+  const refresh = () => setEquipment(getAdminEquipment());
 
-  const [checkItems, setCheckItems] = useState<CheckItem[]>([]);
-  const [isLoadingItems, setIsLoadingItems] = useState(false);
-  const [isChecking, setIsChecking] = useState(false);
-
-  useEffect(() => {
-    Promise.all([
-      orderApiService.getOrders({ limit: 200 }).then((r) => (r.data as Order[]) ?? []),
-      customerApiService.getCustomers({ limit: 200 }).then((r) => (r.data as Customer[]) ?? []),
-    ])
-      .then(([ords, custs]) => {
-        setOrders(ords);
-        setCustomers(custs);
-      })
-      .finally(() => setIsLoadingOrders(false));
-  }, []);
-
-  const customerById = useMemo(() => new Map(customers.map((c) => [c.customerId, c])), [customers]);
-  const selectedOrder = useMemo(() => orders.find((o) => o.orderId === selectedOrderId), [orders, selectedOrderId]);
-  const selectedCustomer = useMemo(
-    () => (selectedOrder ? customerById.get(selectedOrder.customerId) : null),
-    [selectedOrder, customerById],
-  );
-
-  // Tự điền ngày khi chọn đơn hàng
-  useEffect(() => {
-    if (selectedOrder?.eventDate) {
-      setEventDate(selectedOrder.eventDate.slice(0, 10));
-    }
-  }, [selectedOrder]);
-
-  // Load thiết bị từ báo giá đã liên kết với đơn hàng (Order.quotationId) khi chọn đơn hàng.
-  // Quotation giờ thuộc Customer, Order chỉ tham chiếu 1 quotationId cố định — không còn danh sách
-  // nhiều báo giá theo order như trước.
-  useEffect(() => {
-    if (!selectedOrderId || source !== 'quotation' || !selectedOrder?.quotationId) {
-      setCheckItems([]);
-      return;
-    }
-    let cancelled = false;
-    setIsLoadingItems(true);
-    setCheckItems([]);
-
-    quotationApiService
-      .getQuotation(selectedOrder.quotationId)
-      .then(async (detail) => {
-        if (cancelled) return;
-        const items = (detail.data?.items ?? []) as { itemId: string; quantity: number }[];
-
-        const catalogItems = await Promise.all(
-          items.map((it) =>
-            catalogApiService
-              .getItem(it.itemId)
-              .then((r) => ({ item: r.data as Item, qty: it.quantity }))
-              .catch(() => null),
-          ),
-        );
-        if (cancelled) return;
-        const rows = catalogItems
-          .filter((e): e is { item: Item; qty: number } => e !== null && !!e.item)
-          .map(({ item, qty }) => buildRow(item, qty));
-        setCheckItems(rows);
-      })
-      .catch(() => setCheckItems([]))
-      .finally(() => {
-        if (!cancelled) setIsLoadingItems(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedOrderId, source, selectedOrder]);
-
-  const handleCheck = () => {
-    if (!eventDate || checkItems.length === 0) return;
-    setIsChecking(true);
-    Promise.all(
-      checkItems.map((item) =>
-        item.itemId
-          ? inventoryApiService
-              .getInventory({ itemId: item.itemId, limit: 1 })
-              .then((res) => res.data?.[0] ?? null)
-              .catch(() => null)
-          : Promise.resolve(null),
-      ),
-    ).then((inventories) => {
-      setCheckItems((prev) =>
-        prev.map((item, idx) => {
-          const inv = inventories[idx];
-          const available = inv?.quantityAvailable ?? 0;
-          const reserved = inv?.quantityReserved ?? 0;
-          const damaged = inv?.quantityDamaged ?? 0;
-          const shortage = Math.max(0, item.required - available);
-          return { ...item, available, reserved, damaged, shortage, checked: true };
-        }),
-      );
-      setIsChecking(false);
+  const filteredEquipment = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return equipment.filter((e) => {
+      if (categoryFilter && e.category !== categoryFilter) return false;
+      if (onlyMaintenance && e.maintenanceStock <= 0) return false;
+      if (term && !(e.id.toLowerCase().includes(term) || e.name.toLowerCase().includes(term))) return false;
+      return true;
     });
+  }, [equipment, search, categoryFilter, onlyMaintenance]);
+
+  const handleAdjustStock = (type: StockLogType, quantity: number, reason: string) => {
+    if (!viewingEquipment) return;
+    adjustAdminEquipmentStock(viewingEquipment.id, type, quantity, reason, 'Điều chỉnh thủ công');
+    refresh();
+    setViewingEquipment(getAdminEquipment().find((e) => e.id === viewingEquipment.id) ?? null);
   };
 
-  const addItem = () => setCheckItems((prev) => [...prev, blankRow()]);
-
-  const removeItem = (rowId: string) => setCheckItems((prev) => prev.filter((i) => i.rowId !== rowId));
-
-  const updateRequired = (rowId: string, value: number) => {
-    setCheckItems((prev) =>
-      prev.map((item) => {
-        if (item.rowId !== rowId) return item;
-        const shortage = item.checked ? Math.max(0, value - item.available) : 0;
-        return { ...item, required: value, shortage };
-      }),
-    );
-  };
-
-  const orderOptions = useMemo(
-    () => [
-      { value: '', label: '— Chọn đơn hàng —' },
-      ...orders.map((o) => ({
-        value: o.orderId,
-        label: `${o.orderCode} — ${customerById.get(o.customerId)?.customerName ?? 'Khách hàng'}`,
-      })),
-    ],
-    [orders, customerById],
-  );
+  const columns: TableColumn<AdminEquipment>[] = [
+    { key: 'id', label: 'ID', render: (row) => <span className="font-semibold text-slate-400">{row.id}</span> },
+    {
+      key: 'name',
+      label: 'Tên sản phẩm & thiết bị',
+      render: (row) => (
+        <button type="button" onClick={() => setViewingEquipment(row)} className="text-left font-semibold text-blue-600 hover:underline">
+          {row.name}
+        </button>
+      ),
+    },
+    { key: 'category', label: 'Nhóm sản phẩm', render: (row) => <span className="text-slate-600">{row.category}</span> },
+    {
+      key: 'availableStock',
+      label: 'Tổng khả dụng',
+      className: 'text-center',
+      render: (row) => <span className="font-bold text-emerald-600">{getSimulatedStockForDate(row, selectedDate).availableStock}</span>,
+    },
+    {
+      key: 'rentedStock',
+      label: 'Số lượng đã khóa',
+      className: 'text-center',
+      render: (row) => <span className="font-bold text-blue-600">{getSimulatedStockForDate(row, selectedDate).rentedStock}</span>,
+    },
+    {
+      key: 'maintenanceStock',
+      label: 'Số lượng hỏng',
+      className: 'text-center',
+      render: (row) => <span className="font-bold text-rose-600">{getSimulatedStockForDate(row, selectedDate).maintenanceStock}</span>,
+    },
+    {
+      key: 'totalStock',
+      label: 'Tổng số lượng',
+      className: 'text-center bg-slate-50/60',
+      render: (row) => <span className="font-bold text-slate-900">{getSimulatedStockForDate(row, selectedDate).totalStock}</span>,
+    },
+    {
+      key: 'actions',
+      label: 'Thao tác',
+      className: 'text-center',
+      render: (row) => (
+        <div className="flex items-center justify-center gap-1">
+          <button
+            type="button"
+            aria-label="Xem chi tiết"
+            title="Xem chi tiết"
+            onClick={() => setViewingEquipment(row)}
+            className="inline-flex rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600"
+          >
+            <Eye className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            aria-label="Tùy chọn"
+            title="Tùy chọn"
+            onClick={() => setViewingEquipment(row)}
+            className="inline-flex rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </button>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="p-6">
-      <h1 className="text-xl font-semibold text-slate-900">Kiểm tra tồn kho</h1>
-      <p className="mt-1 text-sm text-slate-500">Kiểm tra khả dụng thiết bị theo đơn hàng và ngày sự kiện.</p>
-
-      {/* ── Thiết lập + Thông tin đơn hàng ─────────────────────────── */}
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Form thiết lập */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.2 }}
-          className="lg:col-span-2 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
-        >
-          <h2 className="text-base font-semibold text-slate-800">Thiết lập kiểm tra tồn kho</h2>
-          <p className="mt-0.5 text-sm text-slate-500">
-            Nhập các tham số đầu vào để quét dữ liệu khả dụng thực tế của kho vật tư.
-          </p>
-
-          <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">Đơn hàng</label>
-              <Select
-                value={selectedOrderId}
-                onChange={(e) => setSelectedOrderId(e.target.value)}
-                options={isLoadingOrders ? [{ value: '', label: 'Đang tải...' }] : orderOptions}
-                disabled={isLoadingOrders}
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">Ngày diễn ra sự kiện</label>
-              <input
-                type="date"
-                value={eventDate}
-                onChange={(e) => setEventDate(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-blue-600 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">Nguồn danh sách thiết bị</label>
-              <Select value={source} onChange={(e) => setSource(e.target.value)} options={SOURCE_OPTIONS} />
-            </div>
-          </div>
-
-          <div className="mt-5">
-            <Button
-              onClick={handleCheck}
-              isLoading={isChecking}
-              disabled={!selectedOrderId || !eventDate || checkItems.length === 0 || isLoadingItems}
-            >
-              Kiểm tra khả dụng
-            </Button>
-          </div>
-        </motion.div>
-
-        {/* Thông tin đơn hàng */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.2, delay: 0.05 }}
-          className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
-        >
-          <div className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
-            <FileText className="h-4 w-4" />
-            Thông tin đơn hàng
-          </div>
-
-          {selectedOrder ? (
-            <dl className="space-y-3 text-sm">
-              <div className="flex items-start justify-between gap-2">
-                <dt className="shrink-0 text-slate-400">Mã đơn hàng</dt>
-                <dd>
-                  <Link href={`/manager/orders/${selectedOrder.orderId}`} className="font-semibold text-blue-600 hover:underline">
-                    {selectedOrder.orderCode}
-                  </Link>
-                </dd>
-              </div>
-              <div className="flex items-start justify-between gap-2">
-                <dt className="shrink-0 text-slate-400">Khách hàng</dt>
-                <dd className="text-right font-semibold text-slate-800">{selectedCustomer?.customerName ?? '—'}</dd>
-              </div>
-              <div className="flex items-start justify-between gap-2">
-                <dt className="shrink-0 text-slate-400">Loại sự kiện</dt>
-                <dd className="text-slate-600">{selectedOrder.eventType}</dd>
-              </div>
-              <div className="flex items-start justify-between gap-2">
-                <dt className="shrink-0 text-slate-400">Ngày tổ chức</dt>
-                <dd className="font-semibold text-slate-800">{selectedOrder.eventDate?.slice(0, 10) ?? '—'}</dd>
-              </div>
-              <div className="flex items-start justify-between gap-2">
-                <dt className="shrink-0 text-slate-400">Địa điểm</dt>
-                <dd className="max-w-[140px] truncate text-right font-semibold text-slate-800" title={selectedOrder.location}>
-                  {selectedOrder.location}
-                </dd>
-              </div>
-            </dl>
-          ) : (
-            <p className="text-sm italic text-slate-400">Chọn đơn hàng để xem thông tin.</p>
-          )}
-        </motion.div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Tồn kho doanh nghiệp</h1>
+          <p className="mt-1 text-sm text-slate-500">Quản lý số lượng tồn kho sản phẩm và thiết bị trong doanh nghiệp</p>
+        </div>
+        <Link href="/admin/inventory/maintenance">
+          <Button variant="secondary">
+            <Wrench className="h-4 w-4" />
+            Thiết bị đang bảo trì
+          </Button>
+        </Link>
       </div>
 
-      {/* ── Danh sách thiết bị ──────────────────────────────────────── */}
-      {selectedOrderId && (
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.25, delay: 0.1 }}
-          className="mt-8"
-        >
-          <div className="mb-3 flex items-end justify-between">
-            <div>
-              <h2 className="text-base font-semibold text-slate-800">Danh sách thiết bị cần kiểm tra</h2>
-              {eventDate && (
-                <p className="mt-0.5 text-sm text-slate-500">
-                  Thời gian cập nhật tự động theo mốc sự kiện ngày {eventDate}
-                </p>
-              )}
-            </div>
-            <button type="button" onClick={addItem} className="text-sm font-semibold text-blue-600 hover:underline">
-              + Thêm thiết bị cần check
-            </button>
-          </div>
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-40px' }}
+        transition={{ duration: 0.25 }}
+        className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs sm:p-6"
+      >
+        <h2 className="text-base font-bold text-slate-900">Danh sách tồn kho doanh nghiệp</h2>
 
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            {isLoadingItems ? (
-              <p className="px-6 py-8 text-center text-sm italic text-slate-400">Đang tải danh sách thiết bị...</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="border-b border-slate-100">
-                    <tr>
-                      {['Thiết bị', 'Mã thiết bị', 'Đơn vị', 'Yêu cầu', 'Có sẵn', 'Đã giữ chỗ', 'Hỏng', 'Thiếu', 'Trạng thái', ''].map((h) => (
-                        <th key={h} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {checkItems.length === 0 ? (
-                      <tr>
-                        <td colSpan={10} className="px-4 py-10 text-center text-sm italic text-slate-400">
-                          Không có thiết bị nào.{' '}
-                          {source === 'quotation'
-                            ? 'Đơn hàng chưa có báo giá liên kết.'
-                            : 'Nhấn "+ Thêm thiết bị cần check" để thêm thủ công.'}
-                        </td>
-                      </tr>
-                    ) : (
-                      checkItems.map((item) => {
-                        const isShort = item.checked && item.shortage > 0;
-                        const isOk = item.checked && item.shortage === 0;
-                        return (
-                          <tr key={item.rowId} className="hover:bg-slate-50/60">
-                            <td className="px-4 py-3 font-medium text-slate-800">{item.name}</td>
-                            <td className="px-4 py-3 font-mono text-xs text-slate-400">{item.code || '—'}</td>
-                            <td className="px-4 py-3 text-slate-500">{item.unit}</td>
-                            <td className="px-4 py-3">
-                              <input
-                                type="number"
-                                min={1}
-                                value={item.required}
-                                onChange={(e) => updateRequired(item.rowId, Math.max(1, Number(e.target.value)))}
-                                className="w-16 rounded-md border border-slate-200 px-2 py-1 text-center text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                              />
-                            </td>
-                            <td className="px-4 py-3 text-slate-700">{item.checked ? item.available : '—'}</td>
-                            <td className="px-4 py-3 text-slate-700">{item.checked ? item.reserved : '—'}</td>
-                            <td className="px-4 py-3 text-slate-700">{item.checked ? item.damaged : '—'}</td>
-                            <td className={`px-4 py-3 font-bold ${isShort ? 'text-red-500' : 'text-slate-700'}`}>
-                              {item.checked ? item.shortage : '—'}
-                            </td>
-                            <td className="px-4 py-3">
-                              {!item.checked ? (
-                                <span className="text-xs italic text-slate-400">Chưa kiểm tra</span>
-                              ) : isOk ? (
-                                <Badge variant="success">Đủ hàng</Badge>
-                              ) : (
-                                <Badge variant="error">Thiếu hàng</Badge>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              <button
-                                type="button"
-                                onClick={() => removeItem(item.rowId)}
-                                className="rounded p-1 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-500"
-                                aria-label="Xóa dòng"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
+        <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="min-w-[240px] flex-1">
+            <Input
+              placeholder="Tìm kiếm theo ID, tên sản phẩm..."
+              icon={<Search className="h-4 w-4" />}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
           </div>
-        </motion.div>
-      )}
+          <div className="w-full md:w-52">
+            <Select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              options={[{ value: '', label: 'Nhóm sản phẩm' }, ...EQUIPMENT_CATEGORY_OPTIONS.map((c) => ({ value: c, label: c }))]}
+            />
+          </div>
+          <div className="w-full md:w-48">
+            <Input type="date" icon={<Calendar className="h-4 w-4" />} value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
+          </div>
+          <Button type="button" variant={showAdvancedFilters ? 'primary' : 'secondary'} onClick={() => setShowAdvancedFilters((v) => !v)}>
+            <SlidersHorizontal className="h-4 w-4" />
+            Bộ lọc
+          </Button>
+        </div>
+
+        {showAdvancedFilters && (
+          <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-3">
+            <input
+              id="only-maintenance"
+              type="checkbox"
+              checked={onlyMaintenance}
+              onChange={(e) => setOnlyMaintenance(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="only-maintenance" className="text-sm font-medium text-slate-600">
+              Chỉ hiển thị sản phẩm đang có hàng hỏng / bảo trì
+            </label>
+          </div>
+        )}
+
+        <div className="mt-4">
+          <Table columns={columns} rows={filteredEquipment} rowKey={(row) => row.id} />
+        </div>
+      </motion.div>
+
+      <EquipmentDetailModal
+        isOpen={Boolean(viewingEquipment)}
+        onClose={() => setViewingEquipment(null)}
+        equipment={viewingEquipment}
+        onAdjustStock={handleAdjustStock}
+      />
     </div>
   );
 }

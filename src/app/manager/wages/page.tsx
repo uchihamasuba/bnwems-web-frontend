@@ -1,8 +1,13 @@
+import { Wallet } from 'lucide-react';
+import ComingSoonPage from '@/components/manager/ComingSoonPage';
+
 export default function Page() {
   return (
-    <div className="p-6">
-      <h1 className="text-xl font-semibold text-slate-900">Xác nhận công & lương nhân sự</h1>
-      <p className="mt-1 text-sm text-slate-500">Tính năng đang được phát triển.</p>
-    </div>
+    <ComingSoonPage
+      title="Công & lương"
+      description="Chấm công và tính tiền công Staff."
+      icon={Wallet}
+      outOfScopeNote="Chấm công & tính lương Staff không thuộc phạm vi phát triển của hệ thống này."
+    />
   );
 }

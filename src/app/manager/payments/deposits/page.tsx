@@ -1,357 +1,190 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
-import { Search, Loader2, CheckCircle2, CircleDollarSign, Clock, BadgeCheck } from 'lucide-react';
-import { orderApiService } from '@/services/order.service';
-import { paymentApiService } from '@/services/payment.service';
-import { customerApiService } from '@/services/customer.service';
+import { Eye, RotateCcw, Search, User } from 'lucide-react';
 import { Table, TableColumn } from '@/components/ui/Table';
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
-import { Avatar } from '@/components/ui/Avatar';
-import DashboardStats, { KpiCardItem } from '@/components/reports/DashboardStats';
+import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
 import { formatCurrency } from '@/utils/formatCurrency';
-import { formatDate } from '@/utils/formatDate';
-import type { Order } from '@/types/order';
-import type { Deposit, DepositStatus } from '@/types/payment';
-import type { Customer } from '@/types/customer';
+import {
+  AdminOrderPayment,
+  DEPOSIT_STATUS_META,
+  DepositStatus,
+  PAYMENT_METHOD_OPTIONS,
+  SETTLEMENT_STATUS_META,
+  SettlementStatus,
+  getAdminOrderPayments,
+} from '@/mocks/adminOrderPaymentsMock';
 
-const ORDER_BATCH_SIZE = 10;
+// Trang thuần giao diện — xem giải thích ở đầu src/mocks/adminOrderPaymentsMock.ts. Khớp ảnh mẫu
+// "Đặt cọc & Thanh toán": panel "Bộ lọc & tìm kiếm" (tìm kiếm + 3 dropdown trạng thái/phương thức +
+// đặt lại bộ lọc) và bảng đơn đặt kèm trạng thái cọc/quyết toán độc lập. "Xem chi tiết" dẫn tới trang
+// /manager/payments/deposits/[id] (hồ sơ cọc + quyết toán đầy đủ).
 
-interface DepositRow {
-  deposit: Deposit;
-  order: Order;
-}
+type DepositFilter = '' | DepositStatus;
+type SettlementFilter = '' | SettlementStatus;
 
-type StatusFilter = '' | DepositStatus;
-
-function statusLabel(status: DepositStatus): string {
-  if (status === 'SUCCESS') return 'Đã hạch toán';
-  if (status === 'OVERDUE') return 'Quá hạn';
-  if (status === 'CANCELLED') return 'Đã hủy';
-  return 'Chờ đóng cọc';
-}
-
-function statusBadgeVariant(status: DepositStatus): 'success' | 'warning' | 'error' {
-  if (status === 'SUCCESS') return 'success';
-  if (status === 'OVERDUE' || status === 'CANCELLED') return 'error';
-  return 'warning';
-}
-
-async function fetchDepositsForOrder(order: Order): Promise<DepositRow[]> {
-  const res = await paymentApiService.getOrderDeposits(order.orderId);
-  const list: Deposit[] = res.data ?? [];
-  return list.map((deposit) => ({ deposit, order }));
+function paymentMethodLabel(value: string | null): string {
+  if (!value) return '-';
+  return PAYMENT_METHOD_OPTIONS.find((o) => o.value === value)?.label ?? value;
 }
 
 export default function Page() {
-  const [rows, setRows] = useState<DepositRow[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [ordersLoaded, setOrdersLoaded] = useState(0);
-  const [ordersTotalCount, setOrdersTotalCount] = useState<number | null>(null);
-  const [currentOrderPage, setCurrentOrderPage] = useState(0);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [payments] = useState<AdminOrderPayment[]>(() => getAdminOrderPayments());
+  const [search, setSearch] = useState('');
+  const [depositFilter, setDepositFilter] = useState<DepositFilter>('');
+  const [settlementFilter, setSettlementFilter] = useState<SettlementFilter>('');
+  const [methodFilter, setMethodFilter] = useState('');
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
+  const hasActiveFilters = Boolean(search || depositFilter || settlementFilter || methodFilter);
 
-  // Confirm modal state
-  const [confirmRow, setConfirmRow] = useState<DepositRow | null>(null);
-  const [isConfirming, setIsConfirming] = useState(false);
-  const [confirmError, setConfirmError] = useState<string | null>(null);
-
-  useEffect(() => {
-    customerApiService.getCustomers({ limit: 200 }).then((res) => setCustomers(res.data ?? []));
-  }, []);
-
-  const customerById = useMemo(() => new Map(customers.map((c) => [c.customerId, c])), [customers]);
-
-  const loadOrderPage = async (page: number) => {
-    const ordersRes = await orderApiService.getOrders({ page, limit: ORDER_BATCH_SIZE });
-    const orders: Order[] = ordersRes.data ?? [];
-    setOrdersTotalCount(ordersRes.meta?.totalCount ?? 0);
-    const perOrder = await Promise.all(orders.map(fetchDepositsForOrder));
-    setRows((prev) => [...prev, ...perOrder.flat()]);
-    setOrdersLoaded((prev) => prev + orders.length);
-    setCurrentOrderPage(page);
+  const handleResetFilters = () => {
+    setSearch('');
+    setDepositFilter('');
+    setSettlementFilter('');
+    setMethodFilter('');
   };
 
-  const hasLoadedInitialPage = useRef(false);
-  useEffect(() => {
-    if (hasLoadedInitialPage.current) return;
-    hasLoadedInitialPage.current = true;
-    setLoadError(null);
-    loadOrderPage(1)
-      .catch(() => setLoadError('Không thể tải dữ liệu thanh toán. Vui lòng thử lại.'))
-      .finally(() => setIsInitialLoading(false));
-  }, []);
-
-  const handleLoadMore = async () => {
-    setIsLoadingMore(true);
-    setLoadError(null);
-    try {
-      await loadOrderPage(currentOrderPage + 1);
-    } catch {
-      setLoadError('Không thể tải thêm đơn hàng. Vui lòng thử lại.');
-    } finally {
-      setIsLoadingMore(false);
-    }
-  };
-
-  const filteredRows = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    return rows.filter(({ deposit, order }) => {
-      if (statusFilter && deposit.status !== statusFilter) return false;
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return payments.filter((o) => {
+      if (depositFilter && o.depositStatus !== depositFilter) return false;
+      if (settlementFilter && o.settlementStatus !== settlementFilter) return false;
+      if (methodFilter && o.paymentMethod !== methodFilter) return false;
       if (!term) return true;
-      const customer = customerById.get(order.customerId);
-      return (
-        deposit.depositCode.toLowerCase().includes(term) ||
-        order.orderCode.toLowerCase().includes(term) ||
-        (customer?.customerName?.toLowerCase().includes(term) ?? false)
-      );
+      return o.orderCode.toLowerCase().includes(term) || o.customerName.toLowerCase().includes(term);
     });
-  }, [rows, searchTerm, statusFilter, customerById]);
+  }, [payments, search, depositFilter, settlementFilter, methodFilter]);
 
-  // KPI
-  const totalRequested = rows.reduce((s, r) => s + Number(r.deposit.amount), 0);
-  const totalConfirmed = rows.filter((r) => r.deposit.status === 'SUCCESS').reduce((s, r) => s + Number(r.deposit.amount), 0);
-  const pendingCount = new Set(rows.filter((r) => r.deposit.status === 'PENDING').map((r) => r.order.orderId)).size;
-
-  const kpiItems: KpiCardItem[] = [
-    { label: 'Tổng tiền cọc đã ghi nhận', value: formatCurrency(totalRequested), icon: CircleDollarSign, iconColor: 'blue' },
-    { label: 'Đã hạch toán', value: formatCurrency(totalConfirmed), icon: BadgeCheck, iconColor: 'green' },
-    { label: 'Số đơn đang chờ đóng cọc', value: `${pendingCount} sự kiện`, icon: Clock, iconColor: pendingCount > 0 ? 'amber' : 'green' },
-  ];
-
-  const handleOpenConfirm = (row: DepositRow) => {
-    setConfirmRow(row);
-    setConfirmError(null);
-  };
-
-  const handleConfirm = async () => {
-    if (!confirmRow) return;
-    setIsConfirming(true);
-    setConfirmError(null);
-    try {
-      await paymentApiService.updateDepositStatus(confirmRow.deposit.depositId, { status: 'SUCCESS' });
-      setRows((prev) =>
-        prev.map((r) =>
-          r.deposit.depositId === confirmRow.deposit.depositId ? { ...r, deposit: { ...r.deposit, status: 'SUCCESS' } } : r,
-        ),
-      );
-      setConfirmRow(null);
-    } catch {
-      setConfirmError('Xác nhận cọc thất bại. Vui lòng thử lại.');
-    } finally {
-      setIsConfirming(false);
-    }
-  };
-
-  const hasMoreOrders = ordersTotalCount !== null && ordersLoaded < ordersTotalCount;
-
-  const FILTER_BUTTONS: { label: string; value: StatusFilter }[] = [
-    { label: 'Tất cả', value: '' },
-    { label: 'Chờ đóng cọc', value: 'PENDING' },
-    { label: 'Đã hạch toán', value: 'SUCCESS' },
-    { label: 'Quá hạn', value: 'OVERDUE' },
-  ];
-
-  const columns: TableColumn<DepositRow>[] = [
+  const columns: TableColumn<AdminOrderPayment>[] = [
     {
-      key: 'depositCode',
-      label: 'Mã cọc',
-      render: ({ deposit }) => <span className="font-mono text-sm font-semibold text-blue-600">{deposit.depositCode}</span>,
-    },
-    {
-      key: 'orderId',
-      label: 'Mã đơn hàng',
-      render: ({ order }) => (
-        <Link href={`/manager/orders/${order.orderId}`} className="font-mono text-sm text-slate-500 hover:text-blue-600 hover:underline">
-          {order.orderCode}
-        </Link>
+      key: 'orderCode',
+      label: 'Mã đơn đặt',
+      render: (o) => (
+        <div>
+          <p className="font-bold text-blue-600">{o.orderCode}</p>
+          <p className="mt-0.5 max-w-[200px] truncate text-xs text-slate-400" title={o.eventTitle}>
+            {o.eventTitle}
+          </p>
+        </div>
       ),
     },
     {
       key: 'customer',
       label: 'Tên khách hàng',
-      render: ({ order }) => {
-        const customer = customerById.get(order.customerId);
-        return (
-          <div className="flex items-center gap-2.5">
-            <Avatar name={customer?.customerName ?? String(order.customerId)} size="sm" />
-            <span className="truncate font-semibold text-slate-800">{customer?.customerName ?? `KH #${order.customerId}`}</span>
+      render: (o) => (
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+            <User className="h-4 w-4" />
+          </span>
+          <div>
+            <p className="font-semibold text-slate-800">{o.customerName}</p>
+            <p className="text-xs text-slate-400">{o.customerPhone}</p>
           </div>
-        );
-      },
+        </div>
+      ),
+    },
+    { key: 'totalValue', label: 'Tổng giá trị đơn', render: (o) => <span className="font-bold text-slate-900">{formatCurrency(o.totalValue)}</span> },
+    {
+      key: 'depositAmount',
+      label: 'Tiền đặt cọc',
+      render: (o) => (
+        <div>
+          <p className="font-bold text-slate-900">{formatCurrency(o.depositAmount)}</p>
+          {o.depositIsEstimated && <p className="text-xs font-medium text-amber-600">{o.depositEstimatedLabel}</p>}
+        </div>
+      ),
     },
     {
-      key: 'amount',
-      label: 'Số tiền đặt cọc',
-      className: 'font-bold text-slate-900',
-      render: ({ deposit }) => formatCurrency(Number(deposit.amount)),
-    },
-    {
-      key: 'paymentDate',
-      label: 'Ngày nhận cọc',
-      render: ({ deposit }) => (deposit.paymentDate ? formatDate(deposit.paymentDate) : '—'),
-    },
-    {
-      key: 'status',
+      key: 'depositStatus',
       label: 'Trạng thái cọc',
-      render: ({ deposit }) => <Badge variant={statusBadgeVariant(deposit.status)}>{statusLabel(deposit.status)}</Badge>,
+      render: (o) => (
+        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${DEPOSIT_STATUS_META[o.depositStatus].badgeClass}`}>
+          {DEPOSIT_STATUS_META[o.depositStatus].label}
+        </span>
+      ),
     },
+    {
+      key: 'settlementStatus',
+      label: 'Trạng thái quyết toán',
+      render: (o) => (
+        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${SETTLEMENT_STATUS_META[o.settlementStatus].badgeClass}`}>
+          {SETTLEMENT_STATUS_META[o.settlementStatus].label}
+        </span>
+      ),
+    },
+    { key: 'paymentMethod', label: 'Phương thức', render: (o) => <span className="text-slate-600">{paymentMethodLabel(o.paymentMethod)}</span> },
     {
       key: 'actions',
-      label: 'Thao tác nghiệp vụ',
-      render: (row) => {
-        if (row.deposit.status !== 'PENDING') {
-          return <span className="text-sm text-slate-400">—</span>;
-        }
-        return (
-          <button
-            type="button"
-            onClick={() => handleOpenConfirm(row)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-green-200 px-2.5 py-1.5 text-xs font-semibold text-green-700 transition-colors hover:bg-green-50"
+      label: 'Xử lý',
+      render: (o) => (
+        <div className="flex items-center gap-1">
+          <Link
+            href={`/manager/payments/deposits/${o.orderId}`}
+            aria-label="Xem chi tiết"
+            title="Xem chi tiết"
+            className="inline-flex rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600"
           >
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            Xác nhận cọc
-          </button>
-        );
-      },
+            <Eye className="h-4 w-4" />
+          </Link>
+        </div>
+      ),
     },
   ];
 
   return (
     <div className="p-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Quản lý đặt cọc</h1>
-          <p className="mt-1 text-sm text-slate-500">Theo dõi tiền cọc đã ghi nhận và xác nhận từng đơn hàng.</p>
-        </div>
+      <div>
+        <h1 className="text-xl font-bold text-slate-900">Đặt cọc &amp; Thanh toán</h1>
+        <p className="mt-1 text-sm text-slate-500">Theo dõi trạng thái đặt cọc và quyết toán cuối của từng đơn đặt.</p>
       </div>
 
-      {/* KPI Cards */}
-      <div className="mt-6">
-        <DashboardStats items={kpiItems} />
-      </div>
-
-      {/* Filters */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: '-40px' }}
-        transition={{ duration: 0.22 }}
-        className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-xs"
-      >
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="relative w-72">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Tìm theo mã cọc, mã đơn hàng hoặc tên khách hàng..."
-              className="w-full rounded-md border border-slate-200 bg-white py-2 pl-8 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {FILTER_BUTTONS.map((btn) => (
-              <button
-                key={btn.value}
-                type="button"
-                onClick={() => setStatusFilter(btn.value)}
-                className={`rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors duration-150 ${
-                  statusFilter === btn.value
-                    ? 'bg-blue-600 text-white'
-                    : 'border border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-700'
-                }`}
-              >
-                {btn.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <p className="mt-3 text-xs italic text-slate-400">Đã tải từ {ordersLoaded}/{ordersTotalCount ?? '…'} đơn hàng.</p>
-      </motion.div>
-
-      {/* Table */}
-      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
-        <div className="overflow-x-auto">
-          <Table columns={columns} rows={filteredRows} rowKey={(row) => row.deposit.depositId} isLoading={isInitialLoading} />
-        </div>
-
-        {!isInitialLoading && filteredRows.length === 0 && rows.length > 0 && (
-          <p className="py-8 text-center text-sm text-slate-400">Không tìm thấy khoản cọc phù hợp với bộ lọc hiện tại.</p>
-        )}
-
-        {loadError && <p className="mt-4 text-center text-sm text-red-600">{loadError}</p>}
-
-        {hasMoreOrders && (
-          <div className="mt-4 flex justify-center">
-            <Button variant="secondary" onClick={handleLoadMore} isLoading={isLoadingMore}>
-              {!isLoadingMore && <Loader2 className="h-4 w-4" />}
-              Tải thêm đơn hàng ({ordersLoaded}/{ordersTotalCount})
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {/* Confirm Deposit Modal */}
-      <Modal
-        isOpen={Boolean(confirmRow)}
-        onClose={() => setConfirmRow(null)}
-        title="Xác nhận đặt cọc"
-        subtitle={
-          confirmRow
-            ? `${confirmRow.deposit.depositCode} — ${customerById.get(confirmRow.order.customerId)?.customerName ?? confirmRow.order.orderCode}`
-            : ''
-        }
-      >
-        <div className="space-y-4 p-1">
-          {confirmRow && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-500">Mã đơn hàng</span>
-                <span className="font-semibold text-slate-800">{confirmRow.order.orderCode}</span>
-              </div>
-              <div className="flex justify-between border-t border-slate-100 py-1.5">
-                <span className="text-slate-500">Số tiền đặt cọc</span>
-                <span className="font-bold text-slate-900">{formatCurrency(Number(confirmRow.deposit.amount))}</span>
-              </div>
-              <div className="flex justify-between border-t border-slate-100 py-1.5">
-                <span className="text-slate-500">Phương thức</span>
-                <span className="font-semibold text-slate-800">{confirmRow.deposit.paymentMethod ?? '—'}</span>
-              </div>
-            </div>
+      <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Bộ lọc &amp; tìm kiếm</p>
+          {hasActiveFilters && (
+            <button type="button" onClick={handleResetFilters} className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600">
+              <RotateCcw className="h-3.5 w-3.5" />
+              Đặt lại bộ lọc
+            </button>
           )}
-
-          <p className="text-sm text-slate-600">
-            Xác nhận rằng bạn đã nhận được khoản tiền cọc từ khách hàng và muốn hạch toán vào hệ thống?
-          </p>
-
-          {confirmError && (
-            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 ring-1 ring-inset ring-red-200">{confirmError}</p>
-          )}
-
-          <div className="flex justify-end gap-2 pt-1">
-            <Button variant="secondary" onClick={() => setConfirmRow(null)} disabled={isConfirming}>
-              Hủy
-            </Button>
-            <Button onClick={handleConfirm} isLoading={isConfirming}>
-              <CheckCircle2 className="h-4 w-4" />
-              Xác nhận đã nhận cọc
-            </Button>
-          </div>
         </div>
-      </Modal>
+
+        <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 lg:grid-cols-4">
+          <Input
+            placeholder="Tìm mã đơn hoặc tên khách hàng..."
+            icon={<Search className="h-4 w-4" />}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <Select
+            value={depositFilter}
+            onChange={(e) => setDepositFilter(e.target.value as DepositFilter)}
+            options={[
+              { value: '', label: 'Trạng thái đặt cọc: Tất cả' },
+              ...Object.entries(DEPOSIT_STATUS_META).map(([value, meta]) => ({ value, label: meta.label })),
+            ]}
+          />
+          <Select
+            value={settlementFilter}
+            onChange={(e) => setSettlementFilter(e.target.value as SettlementFilter)}
+            options={[
+              { value: '', label: 'Trạng thái quyết toán: Tất cả' },
+              ...Object.entries(SETTLEMENT_STATUS_META).map(([value, meta]) => ({ value, label: meta.label })),
+            ]}
+          />
+          <Select
+            value={methodFilter}
+            onChange={(e) => setMethodFilter(e.target.value)}
+            options={[{ value: '', label: 'Phương thức: Tất cả' }, ...PAYMENT_METHOD_OPTIONS]}
+          />
+        </div>
+
+        <div className="overflow-x-auto border-t border-slate-100">
+          <Table columns={columns} rows={filtered} rowKey={(row) => row.orderId} />
+        </div>
+      </div>
     </div>
   );
 }

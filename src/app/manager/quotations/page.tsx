@@ -1,216 +1,122 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Eye, FileText, FileCheck2, FilePen, Search, Loader2, Plus, Pencil, Trash2 } from 'lucide-react';
-import { customerApiService } from '@/services/customer.service';
-import { quotationApiService } from '@/services/quotation.service';
+import { Eye, Plus, RotateCcw, Search } from 'lucide-react';
 import { Table, TableColumn } from '@/components/ui/Table';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
-import { Avatar } from '@/components/ui/Avatar';
-import { Badge, getStatusBadgeVariant } from '@/components/ui/Badge';
-import DashboardStats, { KpiCardItem } from '@/components/reports/DashboardStats';
-import CreateQuotationModal from '@/components/orders/CreateQuotationModal';
-import DeleteQuotationModal from '@/components/orders/DeleteQuotationModal';
-import { usePermission } from '@/hooks/usePermission';
+import { Badge } from '@/components/ui/Badge';
+import { Pagination } from '@/components/ui/Pagination';
+import CreateQuotationWizardModal from '@/components/quotations/CreateQuotationWizardModal';
+import type { PaginationState } from '@/hooks/usePagination';
+import { useDebounce } from '@/hooks/useDebounce';
 import { formatCurrency } from '@/utils/formatCurrency';
 import { formatDate } from '@/utils/formatDate';
-import type { Customer } from '@/types/customer';
-import type { Quotation, QuotationDetail } from '@/types/quotation';
+import { AdminQuotationRow, AdminQuotationStatus, QUOTATION_STATUS_META, getAdminQuotations } from '@/mocks/adminQuotationsMock';
 
-// ---------------------------------------------------------------------------
-// Backend chỉ có API báo giá theo từng khách hàng (GET /customers/:customerId/quotations,
-// GET /quotations/:id) — không có endpoint liệt kê TẤT CẢ báo giá toàn hệ thống. Trang này ghép
-// danh sách bằng cách quét từng trang khách hàng thật (GET /customers) rồi gọi song song báo giá
-// của các khách đó — dữ liệu 100% thật, chỉ là tải dần theo từng đợt khách hàng thay vì 1 lần.
-// ---------------------------------------------------------------------------
+// Trang thuần giao diện — xem giải thích ở đầu src/mocks/adminQuotationsMock.ts. Không gọi
+// quotationApiService, không đồng bộ với docs/api/08-quotations.md. Mirror 1:1 của
+// src/app/admin/quotations/page.tsx dưới path /manager/quotations — dùng chung mock/component với
+// Admin, chỉ khác chrome (sidebar/header) do layout.tsx của từng khu vực quyết định.
 
-const CUSTOMER_BATCH_SIZE = 10;
+export default function ManagerQuotationsPage() {
+  const [rows, setRows] = useState<AdminQuotationRow[]>(() => getAdminQuotations());
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [searchInput, setSearchInput] = useState('');
+  const search = useDebounce(searchInput, 300);
+  const [statusFilter, setStatusFilter] = useState<AdminQuotationStatus | ''>('');
+  const [customerFilter, setCustomerFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const limit = 10;
 
-const STATUS_LABEL: Record<Quotation['status'], string> = {
-  DRAFT: 'Nháp',
-  APPROVED: 'Đã duyệt',
-  REJECTED: 'Từ chối',
-};
-
-interface QuotationRow {
-  quotation: Quotation;
-  customer: Customer;
-}
-
-async function fetchQuotationRowsForCustomer(customer: Customer): Promise<QuotationRow[]> {
-  const qRes = await quotationApiService.getCustomerQuotations(customer.customerId, { limit: 50 });
-  const list: Quotation[] = qRes.data ?? [];
-  return list.map((quotation) => ({ quotation, customer }));
-}
-
-export default function Page() {
-  const [rows, setRows] = useState<QuotationRow[]>([]);
-  const [customersLoaded, setCustomersLoaded] = useState(0);
-  const [customersTotalCount, setCustomersTotalCount] = useState<number | null>(null);
-  const [currentCustomerPage, setCurrentCustomerPage] = useState(0);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-
-  const { can } = usePermission();
-  const canManage = can('orders:manage');
-
-  const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
-  const [createCustomerId, setCreateCustomerId] = useState('');
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-
-  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
-  const [editingQuotation, setEditingQuotation] = useState<QuotationDetail | null>(null);
-  const [loadingEditId, setLoadingEditId] = useState<string | null>(null);
-
-  const [deletingRow, setDeletingRow] = useState<QuotationRow | null>(null);
-
-  useEffect(() => {
-    customerApiService.getCustomers({ limit: 200 }).then((res) => setAllCustomers(res.data ?? []));
-  }, []);
-
-  // Nạp lại toàn bộ báo giá của 1 khách hàng từ server và thay thế các dòng cũ của khách đó trong
-  // bảng — dùng chung cho cả tạo mới (thêm phiên bản) và sửa bản nháp (cập nhật tại chỗ).
-  const refreshCustomerQuotations = async (customer: Customer) => {
-    const res = await quotationApiService.getCustomerQuotations(customer.customerId, { limit: 50 });
-    const list: Quotation[] = res.data ?? [];
-    setRows((prev) => {
-      const others = prev.filter((r) => r.customer.customerId !== customer.customerId);
-      return [...list.map((quotation) => ({ quotation, customer })), ...others];
-    });
-  };
-
-  const handleQuotationCreated = async () => {
-    const customer = allCustomers.find((c) => c.customerId === createCustomerId);
-    if (customer) await refreshCustomerQuotations(customer);
-  };
-
-  const handleEditClick = async (row: QuotationRow) => {
-    setLoadingEditId(row.quotation.quotationId);
-    try {
-      const res = await quotationApiService.getQuotation(row.quotation.quotationId);
-      setEditingCustomer(row.customer);
-      setEditingQuotation(res.data);
-    } finally {
-      setLoadingEditId(null);
-    }
-  };
-
-  const handleQuotationEdited = async () => {
-    if (!editingCustomer) return;
-    await refreshCustomerQuotations(editingCustomer);
-  };
-
-  const handleQuotationDeleted = async () => {
-    if (!deletingRow) return;
-    await refreshCustomerQuotations(deletingRow.customer);
-  };
-
-  const loadCustomerPage = async (page: number) => {
-    const customersRes = await customerApiService.getCustomers({ page, limit: CUSTOMER_BATCH_SIZE });
-    const customers: Customer[] = customersRes.data ?? [];
-    setCustomersTotalCount(customersRes.meta?.totalCount ?? 0);
-
-    const perCustomer = await Promise.all(customers.map(fetchQuotationRowsForCustomer));
-
-    setRows((prev) => [...prev, ...perCustomer.flat()]);
-    setCustomersLoaded((prev) => prev + customers.length);
-    setCurrentCustomerPage(page);
-  };
-
-  const hasLoadedInitialPage = useRef(false);
-  useEffect(() => {
-    // Guard against React Strict Mode's dev-only double-invoke — loadCustomerPage accumulates into
-    // `rows`, so calling it twice on mount would duplicate every row.
-    if (hasLoadedInitialPage.current) return;
-    hasLoadedInitialPage.current = true;
-    setLoadError(null);
-    loadCustomerPage(1)
-      .catch(() => setLoadError('Không thể tải danh sách khách hàng. Vui lòng thử lại.'))
-      .finally(() => setIsInitialLoading(false));
-  }, []);
-
-  const handleLoadMore = async () => {
-    setIsLoadingMore(true);
-    setLoadError(null);
-    try {
-      await loadCustomerPage(currentCustomerPage + 1);
-    } catch {
-      setLoadError('Không thể tải thêm khách hàng. Vui lòng thử lại.');
-    } finally {
-      setIsLoadingMore(false);
-    }
-  };
+  const customerOptions = useMemo(() => Array.from(new Set(rows.map((r) => r.customerName))).sort(), [rows]);
 
   const filteredRows = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
+    const term = search.trim().toLowerCase();
     return rows
-      .filter(({ quotation, customer }) => {
-        if (statusFilter && quotation.status !== statusFilter) return false;
+      .filter((row) => {
+        if (statusFilter && row.status !== statusFilter) return false;
+        if (customerFilter && row.customerName !== customerFilter) return false;
         if (!term) return true;
-        const customerName = customer.customerName?.toLowerCase() ?? '';
-        return quotation.quotationId.toLowerCase().includes(term) || customerName.includes(term);
+        return row.code.toLowerCase().includes(term) || row.customerName.toLowerCase().includes(term);
       })
-      .sort((a, b) => new Date(b.quotation.createdAt).getTime() - new Date(a.quotation.createdAt).getTime());
-  }, [rows, searchTerm, statusFilter]);
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [rows, search, statusFilter, customerFilter]);
 
-  const draftCount = rows.filter((r) => r.quotation.status === 'DRAFT').length;
-  const approvedCount = rows.filter((r) => r.quotation.status === 'APPROVED').length;
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / limit));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = filteredRows.slice((safePage - 1) * limit, safePage * limit);
+  const paginationState: PaginationState = { currentPage: safePage, totalPages, totalItems: filteredRows.length, limit };
 
-  const kpiItems: KpiCardItem[] = [
-    { label: 'Tổng số báo giá (đã tải)', value: rows.length, icon: FileText, iconColor: 'blue' },
-    { label: 'Bản nháp', value: draftCount, icon: FilePen, iconColor: 'amber' },
-    { label: 'Đã duyệt', value: approvedCount, icon: FileCheck2, iconColor: 'green' },
+  const draftCount = rows.filter((r) => r.status === 'draft').length;
+  const approvedRows = rows.filter((r) => r.status === 'approved');
+  const rejectedCount = rows.filter((r) => r.status === 'rejected').length;
+  const approvedValue = approvedRows.reduce((sum, r) => sum + r.totalAmount, 0);
+
+  const kpiItems: { label: string; value: string; valueClassName: string }[] = [
+    { label: 'Tổng báo giá', value: String(rows.length), valueClassName: 'text-slate-900' },
+    { label: 'Dự thảo nháp', value: String(draftCount), valueClassName: 'text-slate-900' },
+    { label: 'Đã phê duyệt', value: String(approvedRows.length), valueClassName: 'text-green-600' },
+    { label: 'Bị từ chối', value: String(rejectedCount), valueClassName: 'text-red-600' },
+    { label: 'Giá trị đã phê duyệt', value: formatCurrency(approvedValue), valueClassName: 'text-slate-900' },
   ];
 
-  const hasMoreCustomers = customersTotalCount !== null && customersLoaded < customersTotalCount;
+  const handleResetFilters = () => {
+    setSearchInput('');
+    setStatusFilter('');
+    setCustomerFilter('');
+  };
 
-  const columns: TableColumn<QuotationRow>[] = [
+  const columns: TableColumn<AdminQuotationRow>[] = [
     {
-      key: 'quotationId',
+      key: 'code',
       label: 'Mã báo giá',
-      render: ({ quotation }) => (
-        <Link href={`/manager/quotations/${quotation.quotationId}`} className="font-mono text-sm font-semibold text-blue-600 hover:underline">
-          {quotation.quotationCode}
-        </Link>
-      ),
+      render: (row) => <span className="font-semibold text-slate-800">{row.code}</span>,
     },
     {
-      key: 'customer',
+      key: 'customerName',
       label: 'Khách hàng',
-      render: ({ customer }) => (
-        <div className="flex items-center gap-2.5">
-          <Avatar name={customer.customerName} size="sm" />
-          <span className="truncate font-medium text-slate-700">{customer.customerName}</span>
+      render: (row) => (
+        <div>
+          <p className="font-medium text-slate-800">{row.customerName}</p>
+          <p className="text-xs text-slate-400">{row.customerPhone}</p>
         </div>
       ),
     },
     {
       key: 'version',
       label: 'Phiên bản',
-      render: ({ quotation }) => <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">{quotation.version}</span>,
+      render: (row) => <span className="text-slate-600">v{row.version}</span>,
+    },
+    {
+      key: 'subtotal',
+      label: 'Tổng trước giảm',
+      className: 'text-right',
+      render: (row) => <span className="text-slate-600">{formatCurrency(row.subtotal)}</span>,
+    },
+    {
+      key: 'discount',
+      label: 'Giảm giá',
+      className: 'text-right',
+      render: (row) => <span className="text-red-500">-{formatCurrency(row.discount)}</span>,
     },
     {
       key: 'totalAmount',
       label: 'Tổng tiền',
       className: 'text-right font-bold text-slate-900',
-      render: ({ quotation }) => formatCurrency(quotation.totalAmount),
-    },
-    {
-      key: 'createdAt',
-      label: 'Ngày tạo',
-      render: ({ quotation }) => <span className="whitespace-nowrap text-sm text-slate-500">{formatDate(quotation.createdAt)}</span>,
+      render: (row) => formatCurrency(row.totalAmount),
     },
     {
       key: 'status',
       label: 'Trạng thái',
-      render: ({ quotation }) => <Badge variant={getStatusBadgeVariant(quotation.status)}>{STATUS_LABEL[quotation.status]}</Badge>,
+      render: (row) => <Badge variant={QUOTATION_STATUS_META[row.status].variant}>{QUOTATION_STATUS_META[row.status].label}</Badge>,
+    },
+    {
+      key: 'createdAt',
+      label: 'Ngày tạo',
+      render: (row) => <span className="whitespace-nowrap text-sm text-slate-500">{formatDate(row.createdAt)}</span>,
     },
     {
       key: 'actions',
@@ -218,40 +124,13 @@ export default function Page() {
       render: (row) => (
         <div className="flex items-center gap-1">
           <Link
-            href={`/manager/quotations/${row.quotation.quotationId}`}
+            href={`/manager/quotations/${row.quotationId}`}
             aria-label="Xem chi tiết"
             title="Xem chi tiết"
             className="inline-flex rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600"
           >
             <Eye className="h-4 w-4" />
           </Link>
-          {canManage && row.quotation.status === 'DRAFT' && (
-            <button
-              type="button"
-              onClick={() => handleEditClick(row)}
-              disabled={loadingEditId === row.quotation.quotationId}
-              aria-label="Sửa báo giá"
-              title="Sửa báo giá"
-              className="inline-flex rounded-md p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600 disabled:opacity-50"
-            >
-              {loadingEditId === row.quotation.quotationId ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Pencil className="h-4 w-4" />
-              )}
-            </button>
-          )}
-          {canManage && row.quotation.status === 'DRAFT' && (
-            <button
-              type="button"
-              onClick={() => setDeletingRow(row)}
-              aria-label="Xóa bản nháp"
-              title="Xóa bản nháp"
-              className="inline-flex rounded-md p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          )}
         </div>
       ),
     },
@@ -259,31 +138,31 @@ export default function Page() {
 
   return (
     <div className="p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Danh sách báo giá</h1>
-          <p className="mt-1 text-sm text-slate-500">Tổng hợp các phiên bản báo giá đã gửi khách hàng.</p>
+          <h1 className="text-2xl font-bold text-slate-900">Quản lý báo giá</h1>
+          <p className="mt-1 text-sm text-slate-500">Tạo mới, phê duyệt, lưu nháp hoặc từ chối các báo giá sự kiện.</p>
+          <p className="mt-1 text-xs italic text-slate-400">Đang hiển thị dữ liệu minh họa (giao diện thuần, chưa nối API báo giá thật).</p>
         </div>
-        {canManage && (
-          <div className="flex items-center gap-2">
-            <div className="w-56">
-              <Select
-                value={createCustomerId}
-                onChange={(e) => setCreateCustomerId(e.target.value)}
-                placeholder="-- Chọn khách hàng --"
-                options={allCustomers.map((c) => ({ value: c.customerId, label: c.customerName }))}
-              />
-            </div>
-            <Button disabled={!createCustomerId} onClick={() => setIsCreateModalOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Tạo báo giá mới
-            </Button>
-          </div>
-        )}
+        <Button onClick={() => setIsCreateOpen(true)}>
+          <Plus className="h-4 w-4" />
+          Tạo báo giá mới
+        </Button>
       </div>
 
-      <div className="mt-6">
-        <DashboardStats items={kpiItems} />
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        {kpiItems.map((item, index) => (
+          <motion.div
+            key={item.label}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, delay: index * 0.05 }}
+            className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs"
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{item.label}</p>
+            <p className={`mt-2 text-2xl font-bold ${item.valueClassName}`}>{item.value}</p>
+          </motion.div>
+        ))}
       </div>
 
       <motion.div
@@ -298,70 +177,52 @@ export default function Page() {
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Tìm theo mã báo giá, khách hàng..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Tìm theo mã báo giá, tên khách..."
               className="w-full rounded-md border border-slate-200 bg-white py-2 pl-8 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-          <div className="w-44">
+          <div className="w-48">
             <Select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => setStatusFilter(e.target.value as AdminQuotationStatus | '')}
               options={[
                 { value: '', label: 'Tất cả trạng thái' },
-                { value: 'DRAFT', label: 'Nháp' },
-                { value: 'APPROVED', label: 'Đã duyệt' },
-                { value: 'REJECTED', label: 'Từ chối' },
+                ...(Object.keys(QUOTATION_STATUS_META) as AdminQuotationStatus[]).map((s) => ({
+                  value: s,
+                  label: QUOTATION_STATUS_META[s].label,
+                })),
               ]}
             />
           </div>
+          <div className="w-48">
+            <Select
+              value={customerFilter}
+              onChange={(e) => setCustomerFilter(e.target.value)}
+              options={[{ value: '', label: 'Tất cả khách hàng' }, ...customerOptions.map((c) => ({ value: c, label: c }))]}
+            />
+          </div>
+          <Button variant="secondary" className="ml-auto" onClick={handleResetFilters}>
+            <RotateCcw className="h-4 w-4" />
+            Làm mới bộ lọc
+          </Button>
         </div>
 
-        <p className="mt-3 text-xs italic text-slate-400">
-          Đã tải báo giá từ {customersLoaded}/{customersTotalCount ?? '…'} khách hàng. Tìm kiếm/lọc chỉ áp dụng trong phạm vi đã tải — nhấn &quot;Tải
-          thêm khách hàng&quot; để mở rộng phạm vi.
-        </p>
+        <div className="mt-4 overflow-x-auto">
+          <Table columns={columns} rows={pageRows} rowKey={(row) => row.quotationId} />
+        </div>
+
+        <Pagination pagination={paginationState} onPageChange={setPage} />
       </motion.div>
 
-      <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
-        <div className="overflow-x-auto">
-          <Table columns={columns} rows={filteredRows} rowKey={(row) => row.quotation.quotationId} isLoading={isInitialLoading} />
-        </div>
-
-        {loadError && <p className="mt-4 text-center text-sm text-red-600">{loadError}</p>}
-
-        {hasMoreCustomers && (
-          <div className="mt-4 flex justify-center">
-            <Button variant="secondary" onClick={handleLoadMore} isLoading={isLoadingMore}>
-              {!isLoadingMore && <Loader2 className="h-4 w-4" />}
-              Tải thêm khách hàng ({customersLoaded}/{customersTotalCount})
-            </Button>
-          </div>
-        )}
-      </div>
-
-      <CreateQuotationModal
-        isOpen={isCreateModalOpen}
-        customerId={createCustomerId}
-        onClose={() => setIsCreateModalOpen(false)}
-        onSuccess={handleQuotationCreated}
-      />
-      <CreateQuotationModal
-        isOpen={Boolean(editingQuotation)}
-        customerId={editingCustomer?.customerId ?? ''}
-        editingQuotation={editingQuotation}
-        onClose={() => {
-          setEditingQuotation(null);
-          setEditingCustomer(null);
+      <CreateQuotationWizardModal
+        isOpen={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
+        onSaved={() => {
+          setRows(getAdminQuotations());
+          setIsCreateOpen(false);
         }}
-        onSuccess={handleQuotationEdited}
-      />
-      <DeleteQuotationModal
-        isOpen={Boolean(deletingRow)}
-        quotation={deletingRow?.quotation ?? null}
-        onClose={() => setDeletingRow(null)}
-        onSuccess={handleQuotationDeleted}
       />
     </div>
   );

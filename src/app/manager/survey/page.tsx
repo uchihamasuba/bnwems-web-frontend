@@ -1,224 +1,163 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
-import { motion } from 'framer-motion';
-import { Eye, MapPin, User, Search, ClipboardList, FileCheck2, Clock } from 'lucide-react';
-import { orderApiService } from '@/services/order.service';
-import { customerApiService } from '@/services/customer.service';
-import { surveyApiService } from '@/services/survey.service';
-import { schedulePlanApiService } from '@/services/schedulePlan.service';
-import { Table, TableColumn } from '@/components/ui/Table';
+import { useMemo, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { CheckCircle2, Clock, Compass, Eye, FileText, MapPin, Plus, Search, User } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
-import { Avatar } from '@/components/ui/Avatar';
-import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
-import DashboardStats, { KpiCardItem } from '@/components/reports/DashboardStats';
-import SurveyReportDrawer, { SurveyRow } from '@/components/survey/SurveyReportDrawer';
-import { formatDate } from '@/utils/formatDate';
-import type { Order } from '@/types/order';
-import type { Customer } from '@/types/customer';
-import type { SchedulePlan } from '@/types/schedulePlan';
+import { Modal } from '@/components/ui/Modal';
+import { Pagination } from '@/components/ui/Pagination';
+import type { PaginationState } from '@/hooks/usePagination';
+import { useDebounce } from '@/hooks/useDebounce';
+import SurveyDetailDrawer from '@/components/survey-reports/SurveyDetailDrawer';
+import SurveyCreateDrawer from '@/components/survey-reports/SurveyCreateDrawer';
+import {
+  AdminSurveyReport,
+  SURVEY_REPORT_STATUS_META,
+  SurveyReportStatus,
+  addAdminSurveyReport,
+  getAdminSurveyReports,
+  updateAdminSurveyReport,
+} from '@/mocks/adminSurveyReportsMock';
 
-// ---------------------------------------------------------------------------
-// Backend không có endpoint liệt kê báo cáo khảo sát toàn hệ thống — trang này quét từng trang
-// đơn hàng (GET /orders) rồi gọi song song GET /orders/:orderId/survey-reports (báo cáo, nếu có) +
-// GET /schedule-plans?orderId= (lịch khảo sát, để biết ai phụ trách + ngày dự kiến khi chưa nộp
-// báo cáo). Tất cả field hiển thị đều là dữ liệu thật — không còn mock ngày/tiến độ như trước.
-// ---------------------------------------------------------------------------
+// Trang thuần giao diện — xem giải thích ở đầu src/mocks/adminSurveyReportsMock.ts. Mirror 1:1 của
+// src/app/admin/reports/survey/page.tsx cho Manager (cùng dữ liệu mock, cùng component dùng chung),
+// chỉ khác đường dẫn route (/manager/survey thay vì /admin/reports/survey). Bố cục dạng drawer trượt
+// từ phải theo đúng mẫu docs/components/SurveySection.tsx — không có trang chi tiết riêng.
 
-const ORDER_BATCH_SIZE = 10;
-
-const STATUS_FILTER_OPTIONS = [
-  { value: '', label: 'Tất cả trạng thái' },
-  { value: 'submitted', label: 'Đã nộp báo cáo' },
-  { value: 'pending', label: 'Chưa nộp báo cáo' },
+const STATUS_TABS: { value: SurveyReportStatus | 'ALL'; label: string }[] = [
+  { value: 'ALL', label: 'Tất cả' },
+  { value: 'PENDING_CONFIRM', label: 'Chờ xác nhận' },
+  { value: 'CONFIRMED', label: 'Đã xác nhận' },
 ];
 
-function isSurveyPlan(plan: SchedulePlan): boolean {
-  return plan.taskName?.toLowerCase().includes('khảo sát') ?? false;
-}
+export default function ManagerSurveyReportsPage() {
+  const [reports, setReports] = useState<AdminSurveyReport[]>(() => getAdminSurveyReports());
+  const [searchInput, setSearchInput] = useState('');
+  const search = useDebounce(searchInput, 300);
+  const [statusFilter, setStatusFilter] = useState<SurveyReportStatus | 'ALL'>('ALL');
+  const [page, setPage] = useState(1);
+  const limit = 10;
 
-function computeRowState(row: SurveyRow): 'submitted' | 'pending' {
-  return row.report ? 'submitted' : 'pending';
-}
+  const [selectedReport, setSelectedReport] = useState<AdminSurveyReport | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
 
-async function fetchSurveyRowsForOrder(order: Order, customerById: Map<string, Customer>): Promise<SurveyRow | null> {
-  const [reportsRes, plansRes] = await Promise.all([
-    surveyApiService.getOrderSurveyReports(order.orderId).catch(() => ({ data: [] })),
-    schedulePlanApiService.getSchedulePlans({ orderId: order.orderId }).catch(() => ({ data: [] })),
-  ]);
-  const reports = reportsRes.data ?? [];
-  const plans: SchedulePlan[] = (plansRes.data ?? []).filter(isSurveyPlan);
-  if (reports.length === 0 && plans.length === 0) return null;
+  const countPending = reports.filter((r) => r.status === 'PENDING_CONFIRM').length;
+  const countConfirmed = reports.filter((r) => r.status === 'CONFIRMED').length;
+  const countDraft = reports.filter((r) => r.status === 'DRAFT').length;
 
-  return {
-    orderId: order.orderId,
-    plan: plans[0] ?? null,
-    order,
-    customer: customerById.get(order.customerId),
-    report: reports[0] ?? null,
-  };
-}
-
-export default function Page() {
-  const [rows, setRows] = useState<SurveyRow[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [ordersLoaded, setOrdersLoaded] = useState(0);
-  const [ordersTotalCount, setOrdersTotalCount] = useState<number | null>(null);
-  const [currentOrderPage, setCurrentOrderPage] = useState(0);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [activeRow, setActiveRow] = useState<SurveyRow | null>(null);
-
-  useEffect(() => {
-    customerApiService.getCustomers({ limit: 200 }).then((res) => setCustomers(res.data ?? []));
-  }, []);
-
-  const customerById = useMemo(() => new Map(customers.map((c) => [c.customerId, c])), [customers]);
-
-  const loadOrderPage = async (page: number) => {
-    const ordersRes = await orderApiService.getOrders({ page, limit: ORDER_BATCH_SIZE });
-    const orders: Order[] = ordersRes.data ?? [];
-    setOrdersTotalCount(ordersRes.meta?.totalCount ?? 0);
-    const perOrder = await Promise.all(orders.map((o) => fetchSurveyRowsForOrder(o, customerById)));
-    setRows((prev) => [...prev, ...perOrder.filter((r): r is SurveyRow => r !== null)]);
-    setOrdersLoaded((prev) => prev + orders.length);
-    setCurrentOrderPage(page);
-  };
-
-  const hasLoadedInitialPage = useRef(false);
-  useEffect(() => {
-    if (hasLoadedInitialPage.current) return;
-    hasLoadedInitialPage.current = true;
-    loadOrderPage(1).finally(() => setIsInitialLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleLoadMore = async () => {
-    setIsLoadingMore(true);
-    try {
-      await loadOrderPage(currentOrderPage + 1);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  };
-
-  const filteredRows = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    return rows.filter((row) => {
-      const state = computeRowState(row);
-      if (statusFilter && state !== statusFilter) return false;
+  const filteredReports = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return reports.filter((r) => {
+      if (statusFilter !== 'ALL' && r.status !== statusFilter) return false;
       if (!term) return true;
       return (
-        row.orderId.toLowerCase().includes(term) ||
-        (row.customer?.customerName?.toLowerCase().includes(term) ?? false) ||
-        (row.order?.location?.toLowerCase().includes(term) ?? false)
+        r.id.toLowerCase().includes(term) ||
+        r.orderId.toLowerCase().includes(term) ||
+        r.customerName.toLowerCase().includes(term) ||
+        r.location.toLowerCase().includes(term)
       );
     });
-  }, [rows, searchTerm, statusFilter]);
+  }, [reports, search, statusFilter]);
 
-  const submittedCount = rows.filter((r) => computeRowState(r) === 'submitted').length;
-  const pendingCount = rows.filter((r) => computeRowState(r) === 'pending').length;
+  const totalPages = Math.max(1, Math.ceil(filteredReports.length / limit));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = filteredReports.slice((safePage - 1) * limit, safePage * limit);
+  const paginationState: PaginationState = { currentPage: safePage, totalPages, totalItems: filteredReports.length, limit };
 
-  const kpiItems: KpiCardItem[] = [
-    { label: 'Tổng khảo sát', value: rows.length, icon: ClipboardList, iconColor: 'blue' },
-    { label: 'Đã nộp báo cáo', value: submittedCount, icon: FileCheck2, iconColor: 'green' },
-    { label: 'Chưa nộp báo cáo', value: pendingCount, icon: Clock, iconColor: 'amber' },
-  ];
+  const handleCreateSubmit = (report: AdminSurveyReport) => {
+    addAdminSurveyReport(report);
+    setReports(getAdminSurveyReports());
+    setIsCreateOpen(false);
+  };
 
-  const hasMoreOrders = ordersTotalCount !== null && ordersLoaded < ordersTotalCount;
+  const handleConfirm = (id: string) => {
+    setConfirmingId(id);
+  };
 
-  const columns: TableColumn<SurveyRow>[] = [
-    {
-      key: 'orderId',
-      label: 'Mã đơn',
-      render: (row) => (
-        <Link href={`/manager/orders/${row.orderId}`} className="font-mono text-sm font-semibold text-blue-600 hover:underline">
-          {row.order?.orderCode ?? `#${row.orderId}`}
-        </Link>
-      ),
-    },
-    {
-      key: 'customer',
-      label: 'Khách hàng',
-      render: (row) => (
-        <div className="flex items-center gap-2.5">
-          <Avatar name={row.customer?.customerName ?? String(row.order?.customerId ?? '?')} size="sm" />
-          <span className="truncate font-medium text-slate-700">{row.customer?.customerName ?? `KH #${row.order?.customerId ?? '—'}`}</span>
-        </div>
-      ),
-    },
-    {
-      key: 'location',
-      label: 'Địa điểm sảnh khảo sát',
-      render: (row) => (
-        <span className="flex max-w-[200px] items-center gap-1 truncate text-sm text-slate-600" title={row.order?.location}>
-          <MapPin className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
-          {row.order?.location ?? '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'surveyDate',
-      label: 'Ngày khảo sát',
-      render: (row) => (
-        <span className="whitespace-nowrap text-sm text-slate-500">
-          {row.report ? formatDate(row.report.surveyDate) : row.plan ? formatDate(row.plan.startTime) : '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'surveyor',
-      label: 'Nhân sự thực hiện',
-      render: (row) =>
-        row.plan?.assigneeName ? (
-          <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
-            <User className="h-3.5 w-3.5 text-slate-400" />
-            {row.plan.assigneeName}
-          </span>
-        ) : (
-          <span className="text-sm italic text-slate-400">Chưa phân công</span>
-        ),
-    },
-    {
-      key: 'status',
-      label: 'Trạng thái',
-      className: 'whitespace-nowrap',
-      render: (row) => {
-        const state = computeRowState(row);
-        return state === 'submitted' ? <Badge variant="success">Đã nộp</Badge> : <Badge variant="warning">Chờ nộp</Badge>;
-      },
-    },
-    {
-      key: 'actions',
-      label: 'Xem báo cáo',
-      className: 'text-right',
-      render: (row) => (
-        <button
-          type="button"
-          onClick={() => setActiveRow(row)}
-          className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-600 hover:bg-blue-100"
-        >
-          <Eye className="h-3.5 w-3.5" />
-          Xem báo cáo
-        </button>
-      ),
-    },
-  ];
+  const handleConfirmAction = () => {
+    if (!confirmingId) return;
+    updateAdminSurveyReport(confirmingId, { status: 'CONFIRMED' });
+    setReports(getAdminSurveyReports());
+    setSelectedReport((prev) => (prev && prev.id === confirmingId ? { ...prev, status: 'CONFIRMED' } : prev));
+    setConfirmingId(null);
+  };
 
   return (
     <div className="p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-slate-900">Theo dõi khảo sát hiện trường</h1>
-        <p className="mt-1 text-sm text-slate-500">Quản lý tiến độ khảo sát và báo cáo hiện trường theo từng đơn hàng.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Khảo sát hiện trường</h1>
+          <p className="mt-1 text-sm text-slate-500">Quản lý báo cáo khảo sát hiện trường phục vụ lập kế hoạch & báo giá.</p>
+        </div>
+        <Button onClick={() => setIsCreateOpen(true)}>
+          <Plus className="h-4 w-4" />
+          Tạo báo cáo khảo sát
+        </Button>
       </div>
 
-      <div className="mt-6">
-        <DashboardStats items={kpiItems} />
+      <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-40px' }}
+          transition={{ duration: 0.25 }}
+          className="flex items-center justify-between rounded-xl border border-slate-100 bg-white p-4 shadow-xs"
+        >
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tổng số báo cáo</p>
+            <p className="mt-1 text-xl font-bold text-slate-900">{reports.length}</p>
+          </div>
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-50 text-slate-500">
+            <Compass className="h-5 w-5" />
+          </div>
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-40px' }}
+          transition={{ duration: 0.25, delay: 0.05 }}
+          className="flex items-center justify-between rounded-xl border border-amber-100/60 bg-amber-50/60 p-4 shadow-xs"
+        >
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-amber-500">Chờ xác nhận</p>
+            <p className="mt-1 text-xl font-bold text-amber-700">{countPending}</p>
+          </div>
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
+            <Clock className="h-5 w-5" />
+          </div>
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-40px' }}
+          transition={{ duration: 0.25, delay: 0.1 }}
+          className="flex items-center justify-between rounded-xl border border-emerald-100/60 bg-emerald-50/60 p-4 shadow-xs"
+        >
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-500">Đã xác nhận</p>
+            <p className="mt-1 text-xl font-bold text-emerald-700">{countConfirmed}</p>
+          </div>
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+            <CheckCircle2 className="h-5 w-5" />
+          </div>
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-40px' }}
+          transition={{ duration: 0.25, delay: 0.15 }}
+          className="flex items-center justify-between rounded-xl border border-slate-200/60 bg-slate-50 p-4 shadow-xs"
+        >
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Bản nháp/Khác</p>
+            <p className="mt-1 text-xl font-bold text-slate-600">{countDraft}</p>
+          </div>
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+            <FileText className="h-5 w-5" />
+          </div>
+        </motion.div>
       </div>
 
       <motion.div
@@ -228,41 +167,131 @@ export default function Page() {
         transition={{ duration: 0.25 }}
         className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-xs"
       >
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="relative w-72">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="relative flex-1 min-w-[220px]">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Tìm theo mã đơn, khách hàng hoặc địa điểm..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Tìm mã báo cáo, mã đơn đặt, khách hàng, địa điểm..."
               className="w-full rounded-md border border-slate-200 bg-white py-2 pl-8 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-          <div className="w-48">
-            <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} options={STATUS_FILTER_OPTIONS} />
+          <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+            {STATUS_TABS.map((tab) => (
+              <button
+                key={tab.value}
+                type="button"
+                onClick={() => setStatusFilter(tab.value)}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${
+                  statusFilter === tab.value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
         </div>
-        <p className="mt-3 text-xs italic text-slate-400">
-          Đã tải từ {ordersLoaded}/{ordersTotalCount ?? '…'} đơn hàng.
-        </p>
+
+        <div className="mt-4 overflow-x-auto rounded-xl border border-slate-100">
+          <table className="w-full min-w-full divide-y divide-slate-100 text-sm">
+            <thead className="bg-slate-50">
+              <tr className="text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+                <th className="px-4 py-3">Mã báo cáo</th>
+                <th className="px-4 py-3">Mã đơn đặt</th>
+                <th className="px-4 py-3">Khách hàng / Sự kiện</th>
+                <th className="px-4 py-3">Ngày khảo sát</th>
+                <th className="px-4 py-3">Địa điểm</th>
+                <th className="px-4 py-3">Người phụ trách</th>
+                <th className="px-4 py-3">Trạng thái</th>
+                <th className="px-4 py-3 text-right">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {pageRows.length > 0 ? (
+                pageRows.map((r) => (
+                  <tr key={r.id} className="hover:bg-slate-50/60">
+                    <td className="px-4 py-3 font-mono font-semibold text-slate-900">{r.id}</td>
+                    <td className="px-4 py-3">
+                      <span className="rounded bg-slate-100 px-2 py-1 font-mono font-medium text-slate-800">{r.orderId}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-slate-900">{r.customerName}</p>
+                      <p className="mt-0.5 text-xs text-slate-400">{r.eventName}</p>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-500">{r.surveyDate}</td>
+                    <td className="max-w-xs truncate px-4 py-3 text-slate-600" title={r.location}>
+                      {r.location}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center gap-1.5 font-medium text-slate-700">
+                        <User className="h-3.5 w-3.5 text-slate-400" />
+                        {r.assignee}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant={SURVEY_REPORT_STATUS_META[r.status].variant}>{SURVEY_REPORT_STATUS_META[r.status].label}</Badge>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedReport(r)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1 font-medium text-slate-700 hover:border-blue-300 hover:bg-slate-50"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        Xem chi tiết
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center">
+                    <MapPin className="mx-auto h-6 w-6 text-slate-300" />
+                    <p className="mt-2 text-sm font-medium text-slate-500">Không tìm thấy báo cáo khảo sát nào</p>
+                    <p className="text-xs text-slate-400">Nhập lại từ khóa hoặc chuyển đổi trạng thái xem.</p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <Pagination pagination={paginationState} onPageChange={setPage} />
       </motion.div>
 
-      <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
-        <div className="overflow-x-auto">
-          <Table columns={columns} rows={filteredRows} rowKey={(row) => row.orderId} isLoading={isInitialLoading} emptyText="Không có khảo sát nào phù hợp." />
-        </div>
-
-        {hasMoreOrders && (
-          <div className="mt-4 flex justify-center">
-            <Button variant="secondary" onClick={handleLoadMore} isLoading={isLoadingMore}>
-              Tải thêm đơn hàng ({ordersLoaded}/{ordersTotalCount})
-            </Button>
-          </div>
+      <AnimatePresence>
+        {selectedReport && (
+          <SurveyDetailDrawer report={selectedReport} onClose={() => setSelectedReport(null)} onConfirm={handleConfirm} />
         )}
-      </div>
+      </AnimatePresence>
 
-      <SurveyReportDrawer row={activeRow} onClose={() => setActiveRow(null)} />
+      <SurveyCreateDrawer isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} onSubmit={handleCreateSubmit} />
+
+      <Modal
+        isOpen={Boolean(confirmingId)}
+        onClose={() => setConfirmingId(null)}
+        title="Xác nhận báo cáo khảo sát?"
+        subtitle={
+          confirmingId
+            ? `Bạn đang phê duyệt thông số khảo sát của báo cáo ${confirmingId}. Dữ liệu đo đạc này sẽ dùng làm căn cứ lập kế hoạch & báo giá.`
+            : undefined
+        }
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmingId(null)}>
+              Hủy bỏ
+            </Button>
+            <Button onClick={handleConfirmAction}>
+              <CheckCircle2 className="h-4 w-4" />
+              Đồng ý phê duyệt
+            </Button>
+          </>
+        }
+      >
+        <div />
+      </Modal>
     </div>
   );
 }

@@ -1,417 +1,792 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ChevronRight, Printer, Check, Pencil, Trash2 } from 'lucide-react';
-import { quotationApiService } from '@/services/quotation.service';
-import { customerApiService } from '@/services/customer.service';
-import { catalogApiService } from '@/services/catalog.service';
-import { Badge, getStatusBadgeVariant } from '@/components/ui/Badge';
+import {
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  ClipboardCheck,
+  Copy,
+  FileSignature,
+  GitCompare,
+  Mail,
+  MapPin,
+  Pencil,
+  Phone,
+  Plus,
+  Printer,
+  RefreshCw,
+  Sparkles,
+  Trash2,
+  X,
+} from 'lucide-react';
+import { Avatar } from '@/components/ui/Avatar';
+import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Select } from '@/components/ui/Select';
+import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
-import CreateQuotationModal from '@/components/orders/CreateQuotationModal';
-import DeleteQuotationModal from '@/components/orders/DeleteQuotationModal';
-import { formatCurrency, formatCurrencyInWords } from '@/utils/formatCurrency';
-import { formatDate, formatTime } from '@/utils/formatDate';
-import { usePermission } from '@/hooks/usePermission';
-import type { Quotation, QuotationDetail } from '@/types/quotation';
-import type { Customer } from '@/types/customer';
+import { Select } from '@/components/ui/Select';
+import QuotationPicklistView from '@/components/quotations/QuotationPicklistView';
+import SurveyComparisonPanel from '@/components/quotations/SurveyComparisonPanel';
+import InventoryAvailabilityPanel from '@/components/quotations/InventoryAvailabilityPanel';
+import CreateOrderFromQuotationModal from '@/components/quotations/CreateOrderFromQuotationModal';
+import { formatCurrency } from '@/utils/formatCurrency';
+import { formatDate } from '@/utils/formatDate';
+import {
+  ASSIGNEE_POOL,
+  AdminQuotationLineItem,
+  ITEM_CATEGORY_OPTIONS,
+  QUOTATION_CATALOGUE,
+  QUOTATION_STATUS_META,
+  QuotationSurveyAssignment,
+  deleteAdminQuotation,
+  getAdminQuotationDetail,
+  updateAdminQuotation,
+} from '@/mocks/adminQuotationsMock';
+import { getAdminContracts } from '@/mocks/adminContractsMock';
+import { getSurveyReportByQuotationId } from '@/mocks/adminSurveyReportsMock';
+import { getAdminSchedulePlanByQuotationId } from '@/mocks/adminSchedulePlansMock';
+import { getAdminOrders } from '@/mocks/adminOrdersMock';
 
-const STATUS_LABEL: Record<Quotation['status'], string> = {
-  DRAFT: 'Nháp',
-  APPROVED: 'Đã duyệt',
-  REJECTED: 'Từ chối',
-};
+// Trang thuần giao diện — xem giải thích ở đầu src/mocks/adminQuotationsMock.ts. Mirror 1:1 của
+// src/app/admin/quotations/[id]/page.tsx dưới path /manager/quotations/[id] — dùng chung mock/store
+// và component với Admin (cùng bộ dữ liệu mô phỏng), chỉ đổi tiền tố URL nội bộ sang /manager/... và
+// chrome (sidebar/header) do layout.tsx của khu vực Manager quyết định. Bố cục port từ
+// docs/components/Quotations (1).tsx do người dùng cung cấp: 2 trang (Báo giá chính thức / Picklist
+// chi tiết) chuyển bằng chấm phân trang, sửa hạng mục inline ngay tại trang này (không còn chuyển
+// sang wizard riêng), và khối "Đối chiếu khảo sát" khi báo giá đang ở trạng thái "Đang khảo sát".
+//
+// Lưu ý điều hướng: nút "Lập/Quản lý kế hoạch khảo sát báo giá" (báo giá ở trạng thái "Bản nháp") trỏ
+// sang /manager/schedule/plans (tương đương /admin/coordination/planning bên Admin — cùng là màn hình
+// "Kế hoạch & phân công" theo điều hướng ở Sidebar.tsx). Trang đó hiện vẫn là stub ComingSoonPage bên
+// Manager, chưa xử lý query param ?quotationId= như bên Admin — sẽ tự hoạt động khi màn hình đó được
+// dựng đầy đủ.
 
-interface ItemInfo {
-  name: string;
-  unit: string;
+function emptyEditItem(): AdminQuotationLineItem {
+  return { id: `qi-edit-new-${Date.now()}-${Math.floor(Math.random() * 1000)}`, name: '', category: ITEM_CATEGORY_OPTIONS[0], unit: 'Cái', quantity: 1, unitPrice: 0, discount: 0 };
 }
 
-export default function Page() {
-  const { id } = useParams<{ id: string }>();
+export default function ManagerQuotationDetailPage() {
+  const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { can } = usePermission();
-  const canManage = can('orders:manage');
+  const id = params.id;
+  const [detail, setDetail] = useState(() => getAdminQuotationDetail(id));
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [copyState, setCopyState] = useState<'idle' | 'copying' | 'copied' | 'error'>('idle');
+  const [isSurveyModalOpen, setIsSurveyModalOpen] = useState(false);
+  const [surveyForm, setSurveyForm] = useState<QuotationSurveyAssignment>({ assigneeName: '', date: '', time: '', notes: '' });
+  const [detailPage, setDetailPage] = useState<1 | 2>(1);
+  const [isEditingItems, setIsEditingItems] = useState(false);
+  const [editItems, setEditItems] = useState<AdminQuotationLineItem[]>([]);
+  const [editNotes, setEditNotes] = useState('');
+  const [syncSuccess, setSyncSuccess] = useState(false);
+  const [isSurveyComparisonOpen, setIsSurveyComparisonOpen] = useState(false);
+  const [isCreateOrderOpen, setIsCreateOrderOpen] = useState(false);
+  const quotationCardRef = useRef<HTMLDivElement>(null);
 
-  const [detail, setDetail] = useState<QuotationDetail | null>(null);
-  const [customer, setCustomer] = useState<Customer | null>(null);
-  const [versions, setVersions] = useState<Quotation[]>([]);
-  const [itemById, setItemById] = useState<Map<string, ItemInfo>>(new Map());
-  const [isLoading, setIsLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
+  const isLinkedToContract = useMemo(
+    () => (detail ? getAdminContracts().some((c) => c.quotationId === detail.row.quotationId) : false),
+    [detail],
+  );
 
-  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
-  const [isConfirming, setIsConfirming] = useState(false);
-  const [confirmError, setConfirmError] = useState<string | null>(null);
-
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag toggled before/after the fetch below, not a render loop
-    setIsLoading(true);
-    setNotFound(false);
-    quotationApiService
-      .getQuotation(id)
-      .then(async (res) => {
-        const d: QuotationDetail = res.data;
-        setDetail(d);
-        const [customerRes, versionsRes] = await Promise.all([
-          customerApiService.getCustomer(d.customerId),
-          quotationApiService.getCustomerQuotations(d.customerId, { limit: 50 }),
-        ]);
-        setCustomer(customerRes.data);
-        setVersions(versionsRes.data ?? []);
-      })
-      .catch(() => setNotFound(true))
-      .finally(() => setIsLoading(false));
-  }, [id]);
-
-  useEffect(() => {
-    catalogApiService.getItems({ limit: 200 }).then((res) => {
-      const items: { itemId: string; itemName: string; unit: string }[] = res.data ?? [];
-      setItemById(new Map(items.map((item) => [item.itemId, { name: item.itemName, unit: item.unit }])));
-    });
-  }, []);
-
-  const totals = useMemo(() => {
-    if (!detail) return null;
-    return { subtotal: detail.subtotal, discountTotal: detail.discountTotal, totalAmount: detail.totalAmount };
-  }, [detail]);
-
-  const handleEditSuccess = async () => {
-    const res = await quotationApiService.getQuotation(id);
-    setDetail(res.data);
-  };
-
-  const handleDeleteSuccess = () => {
-    router.push('/manager/quotations');
-  };
-
-  const handleConfirm = async () => {
-    setIsConfirming(true);
-    setConfirmError(null);
-    try {
-      await quotationApiService.updateQuotationStatus(id, { status: 'APPROVED' });
-      const res = await quotationApiService.getQuotation(id);
-      setDetail(res.data);
-      setIsConfirmModalOpen(false);
-    } catch {
-      setConfirmError('Không thể xác nhận báo giá. Vui lòng thử lại.');
-    } finally {
-      setIsConfirming(false);
-    }
-  };
-
-  if (isLoading) {
+  if (!detail) {
     return (
       <div className="p-6">
-        <p className="text-sm text-slate-400">Đang tải...</p>
-      </div>
-    );
-  }
-
-  if (notFound || !detail || !customer) {
-    return (
-      <div className="p-6">
-        <p className="text-sm text-red-500">Không tìm thấy báo giá này.</p>
-        <Link href="/manager/quotations" className="mt-2 inline-block text-sm font-semibold text-blue-600 hover:underline">
-          Quay lại danh sách báo giá
-        </Link>
-      </div>
-    );
-  }
-
-  return (
-    <div className="p-6 print:p-0">
-      {/* Breadcrumb + back link — ẩn khi in */}
-      <div className="mb-6 flex items-center justify-between print:hidden">
-        <nav className="flex items-center gap-2 text-sm text-slate-500">
-          <Link href="/manager/quotations" className="hover:text-slate-700">
-            Báo giá
-          </Link>
-          <ChevronRight className="h-3.5 w-3.5" />
-          <span className="font-semibold text-slate-900">{detail.quotationCode}</span>
-        </nav>
-        <Link href="/manager/quotations" className="flex items-center gap-1 text-sm font-semibold text-blue-600 hover:underline">
-          <ArrowLeft className="h-4 w-4" />
+        <p className="text-sm text-slate-500">Không tìm thấy báo giá.</p>
+        <Link href="/manager/quotations" className="mt-2 inline-block text-sm font-medium text-blue-600 hover:underline">
           Quay lại danh sách
         </Link>
       </div>
+    );
+  }
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* CỘT TRÁI — hóa đơn báo giá dạng in */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-40px' }}
-          transition={{ duration: 0.25 }}
-          className="space-y-8 rounded-none border border-slate-300 bg-white p-8 shadow-md lg:col-span-8 sm:p-12 print:border-0 print:shadow-none"
-        >
-          <div className="flex flex-col items-start justify-between gap-4 text-xs sm:flex-row">
-            <div>
-              <h2 className="text-base font-extrabold tracking-tight text-slate-900">BN Wedding &amp; Event</h2>
-              <p className="mt-0.5 font-medium text-slate-500">Đông Anh, Hà Nội</p>
-              <p className="font-medium text-slate-500">Hotline: 0901 234 567</p>
-            </div>
-            <div className="text-left font-medium sm:text-right">
-              <p className="text-slate-800">
-                <span className="text-slate-400">Mã báo giá:</span> <strong className="text-slate-950">{detail.quotationCode}</strong>
-              </p>
-              <p className="mt-0.5 text-slate-400">
-                Ngày tạo: <span className="font-semibold text-slate-700">{formatDate(detail.createdAt)}</span>
-              </p>
-            </div>
-          </div>
+  const { row } = detail;
+  const canDelete = row.status === 'draft' || row.status === 'surveying';
+  const canApproveReject = row.status === 'draft' || row.status === 'surveying';
+  const surveyReport = row.status === 'surveying' ? getSurveyReportByQuotationId(row.quotationId) : undefined;
+  // Báo giá nháp: phân công khảo sát điều phối qua Kế hoạch & phân công (lịch, nhân sự) thay vì chỉ
+  // 1 field đơn giản như báo giá đã qua khảo sát — xem giải thích ở đầu adminSchedulePlansMock.ts.
+  const linkedSurveyPlan = row.status === 'draft' ? getAdminSchedulePlanByQuotationId(row.quotationId) : undefined;
+  const linkedOrder = row.status === 'approved' ? getAdminOrders().find((o) => o.quotationId === row.quotationId) : undefined;
+  const equipmentCheckItems = row.items
+    .filter((it) => it.category.includes('Thiết bị') || it.category.includes('Thi công'))
+    .map((it) => ({ name: it.name, quantity: it.quantity, unit: it.unit ?? '' }));
 
-          <div className="border-b-2 border-slate-800" />
+  const refresh = () => setDetail(getAdminQuotationDetail(id));
 
-          <div className="text-center">
-            <h3 className="text-2xl font-black tracking-widest text-slate-950">PHIẾU BÁO GIÁ</h3>
-          </div>
+  const handleApprove = () => {
+    if (!canApproveReject) return;
+    updateAdminQuotation(row.quotationId, { status: 'approved', updatedAt: new Date().toISOString().slice(0, 10) });
+    refresh();
+  };
 
-          <div className="space-y-3 text-xs text-slate-800">
-            <div className="flex items-end gap-1.5">
-              <span className="whitespace-nowrap text-slate-400">Tên khách hàng:</span>
-              <span className="flex-1 border-b border-dotted border-slate-300 pb-0.5 font-bold text-slate-900">{customer.customerName}</span>
-            </div>
-            <div className="flex items-end gap-1.5">
-              <span className="whitespace-nowrap text-slate-400">Địa chỉ:</span>
-              <span className="flex-1 border-b border-dotted border-slate-300 pb-0.5 font-semibold text-slate-800">{customer.address || '—'}</span>
-            </div>
-          </div>
+  const handleReject = () => {
+    if (!canApproveReject) return;
+    updateAdminQuotation(row.quotationId, { status: 'rejected', updatedAt: new Date().toISOString().slice(0, 10) });
+    refresh();
+  };
 
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="border-b-2 border-t-2 border-slate-800 text-[11px] font-bold uppercase text-slate-900">
-                  <th className="w-12 px-3 py-2 text-center">STT</th>
-                  <th className="px-3 py-2 text-left">Tên hạng mục</th>
-                  <th className="w-16 px-3 py-2 text-center">ĐVT</th>
-                  <th className="w-16 px-3 py-2 text-center">SL</th>
-                  <th className="w-28 px-3 py-2 text-right">Đơn giá</th>
-                  <th className="w-28 px-3 py-2 text-right">Thành tiền</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 text-xs text-slate-800">
-                {detail.items.map((item, index) => {
-                  const itemInfo = itemById.get(item.itemId);
-                  return (
-                    <tr key={item.quotationItemId ?? `${item.itemId}-${index}`}>
-                      <td className="px-3 py-3 text-center font-medium text-slate-400">{index + 1}</td>
-                      <td className="px-3 py-3 font-semibold leading-snug text-slate-950">
-                        {itemInfo?.name ?? item.itemName ?? `#${item.itemId}`}
-                      </td>
-                      <td className="px-3 py-3 text-center font-medium text-slate-500">{itemInfo?.unit ?? 'bộ'}</td>
-                      <td className="px-3 py-3 text-center font-bold text-slate-900">{item.quantity}</td>
-                      <td className="px-3 py-3 text-right font-semibold text-slate-600">{formatCurrency(item.price)}</td>
-                      <td className="px-3 py-3 text-right font-extrabold text-slate-950">
-                        {formatCurrency(item.lineTotal ?? item.quantity * item.price - (item.discount ?? 0))}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+  const handleDeleteConfirm = () => {
+    deleteAdminQuotation(row.quotationId);
+    router.push('/manager/quotations');
+  };
 
-          {totals && (
-            <div className="flex justify-end">
-              <div className="w-72 space-y-2 text-xs font-medium text-slate-800">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Tổng tiền hàng:</span>
-                  <span className="font-bold text-slate-950">{formatCurrency(totals.subtotal)}</span>
-                </div>
-                <div className="flex justify-between text-rose-600">
-                  <span className="text-slate-500">Giảm giá:</span>
-                  <span className="font-bold">-{formatCurrency(totals.discountTotal)}</span>
-                </div>
-                <div className="my-1 border-b-2 border-slate-800" />
-                <div className="flex justify-between pt-1 text-sm font-black text-slate-950">
-                  <span>Tổng cộng:</span>
-                  <span className="text-base font-black">{formatCurrency(totals.totalAmount)}</span>
-                </div>
-              </div>
-            </div>
-          )}
+  const handleOpenSurveyModal = () => {
+    if (row.status === 'draft') {
+      router.push(linkedSurveyPlan ? '/manager/schedule/plans' : `/manager/schedule/plans?quotationId=${row.quotationId}`);
+      return;
+    }
+    setSurveyForm(row.surveyAssignment ?? { assigneeName: ASSIGNEE_POOL[0], date: row.createdAt, time: '09:00', notes: '' });
+    setIsSurveyModalOpen(true);
+  };
 
-          <div className="space-y-12 border-t border-slate-100 pt-8">
-            <div className="space-y-2 text-xs text-slate-600">
-              <p>
-                <span className="font-semibold text-slate-400">Số tiền bằng chữ:</span>{' '}
-                <span className="font-bold italic text-slate-800">{formatCurrencyInWords(detail.totalAmount)}</span>
-              </p>
-              <p className="italic text-slate-500">
-                Báo giá có hiệu lực 07 ngày kể từ ngày lập, chưa bao gồm phụ phí phát sinh tại hiện trường (nếu có).
-              </p>
-            </div>
+  const handleSurveySubmit = () => {
+    if (!surveyForm.assigneeName || !surveyForm.date || !surveyForm.time) return;
+    updateAdminQuotation(row.quotationId, { surveyAssignment: surveyForm });
+    refresh();
+    setIsSurveyModalOpen(false);
+  };
 
-            <div className="grid grid-cols-2 pt-4 text-center">
-              <div className="space-y-14">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-900">Khách hàng</p>
-                <p className="text-[11px] italic text-slate-400">(Ký, ghi rõ họ tên)</p>
-              </div>
-              <div className="space-y-14">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-900">Người lập báo giá</p>
-                <p className="text-[11px] italic text-slate-400">(Ký, ghi rõ họ tên)</p>
-              </div>
-            </div>
-          </div>
-        </motion.div>
+  // Chụp khối báo giá (letterhead + hạng mục + tổng kết) thành ảnh PNG rồi copy vào clipboard —
+  // dynamic import html-to-image để không kéo lib vào bundle SSR/khi chưa bấm nút. Dùng html-to-image
+  // (rasterize qua SVG foreignObject, để trình duyệt tự parse CSS) thay vì html2canvas vì html2canvas
+  // không parse được màu oklch()/lab() mà Tailwind v4 xuất ra — báo lỗi "unsupported color function".
+  const handleCopyImage = async () => {
+    if (!quotationCardRef.current || copyState === 'copying') return;
+    setCopyState('copying');
+    try {
+      const { toBlob } = await import('html-to-image');
+      const blob = await toBlob(quotationCardRef.current, { backgroundColor: '#ffffff', pixelRatio: 2 });
+      if (!blob) throw new Error('Không tạo được ảnh báo giá');
 
-        {/* CỘT PHẢI — trạng thái, tài chính, thao tác, lịch sử phiên bản — ẩn khi in */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-40px' }}
-          transition={{ duration: 0.25, delay: 0.05 }}
-          className="space-y-6 lg:col-span-4 print:hidden"
-        >
-          <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Trạng thái báo giá</h3>
-            <div className="flex items-center gap-2">
-              <Badge variant={getStatusBadgeVariant(detail.status)}>{STATUS_LABEL[detail.status]}</Badge>
-            </div>
+      if (typeof window !== 'undefined' && 'ClipboardItem' in window && navigator.clipboard?.write) {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      } else {
+        // Trình duyệt không hỗ trợ copy ảnh vào clipboard (vd Firefox cũ) — tải ảnh về thay thế.
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `bao-gia-${row.code}.png`;
+        link.click();
+        URL.revokeObjectURL(url);
+      }
+      setCopyState('copied');
+    } catch (error) {
+      console.error('Sao chép ảnh báo giá thất bại:', error);
+      setCopyState('error');
+    } finally {
+      setTimeout(() => setCopyState('idle'), 2000);
+    }
+  };
 
-            {versions.length > 1 ? (
-              <Select
-                label="Phiên bản"
-                value={detail.quotationId}
-                onChange={(e) => router.push(`/manager/quotations/${e.target.value}`)}
-                options={versions.map((v) => ({ value: v.quotationId, label: `Phiên bản ${v.version} — ${STATUS_LABEL[v.status]}` }))}
-              />
-            ) : (
-              <p className="text-xs font-semibold text-slate-600">Phiên bản {detail.version}</p>
-            )}
+  // ---- Sửa hạng mục inline ----
+  const startEditingItems = () => {
+    setEditItems(row.items.map((it) => ({ ...it })));
+    setEditNotes(row.notes ?? '');
+    setDetailPage(1);
+    setIsEditingItems(true);
+  };
 
-            <div className="space-y-2.5 border-t border-slate-100 pt-3 text-xs font-medium text-slate-600">
-              <div className="flex justify-between">
-                <span className="text-slate-400">Khách hàng:</span>
-                <Link href={`/manager/customers/${customer.customerId}`} className="font-semibold text-blue-600 hover:underline">
-                  {customer.customerName}
-                </Link>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Ngày cập nhật:</span>
-                <span className="font-semibold text-slate-800">
-                  {formatDate(detail.updatedAt)} {formatTime(detail.updatedAt)}
-                </span>
-              </div>
-            </div>
-          </div>
+  const handleUpdateEditItemField = <K extends keyof AdminQuotationLineItem>(index: number, field: K, value: AdminQuotationLineItem[K]) => {
+    setEditItems((prev) => prev.map((it, i) => (i === index ? { ...it, [field]: value } : it)));
+  };
 
-          <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Tóm tắt tài chính</h3>
-            <div className="space-y-2.5 text-xs font-medium text-slate-600">
-              <div className="flex justify-between">
-                <span className="text-slate-400">Tổng tiền hàng:</span>
-                <span className="font-bold text-slate-800">{formatCurrency(detail.subtotal)}</span>
-              </div>
-              <div className="flex justify-between text-rose-600">
-                <span className="text-slate-400">Giảm giá:</span>
-                <span className="font-bold">-{formatCurrency(detail.discountTotal)}</span>
-              </div>
-              <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-                <span className="text-xs font-bold text-slate-500">Thành tiền:</span>
-                <span className="text-lg font-black text-blue-600">{formatCurrency(detail.totalAmount)}</span>
-              </div>
-            </div>
-          </div>
+  const handleAddManualEditItem = () => setEditItems((prev) => [...prev, emptyEditItem()]);
 
-          <div className="space-y-2.5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <Button className="w-full" variant="primary" onClick={() => globalThis.print()}>
-              <Printer className="h-4 w-4" />
-              In / Xuất PDF
-            </Button>
-            {canManage && detail.status === 'DRAFT' && (
-              <Button className="w-full" variant="secondary" onClick={() => setIsEditModalOpen(true)}>
-                <Pencil className="h-4 w-4" />
-                Sửa báo giá
-              </Button>
-            )}
-            {canManage && detail.status === 'DRAFT' && (
-              <Button className="w-full" variant="secondary" onClick={() => setIsConfirmModalOpen(true)}>
-                <Check className="h-4 w-4" />
-                Xác nhận & duyệt báo giá
-              </Button>
-            )}
-            {canManage && detail.status === 'DRAFT' && (
-              <Button className="w-full" variant="danger" onClick={() => setIsDeleteModalOpen(true)}>
-                <Trash2 className="h-4 w-4" />
-                Xóa báo giá
-              </Button>
-            )}
-          </div>
+  const handleAddCatalogueEditItem = (catItem: (typeof QUOTATION_CATALOGUE)[number]) => {
+    setEditItems((prev) => [
+      ...prev,
+      { id: `qi-edit-cat-${Date.now()}-${Math.floor(Math.random() * 1000)}`, name: catItem.name, category: catItem.category, unit: catItem.unit, quantity: 1, unitPrice: catItem.price, discount: 0 },
+    ]);
+  };
 
-          <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Lịch sử phiên bản</h3>
-            <div className="relative space-y-6 pl-6 before:absolute before:bottom-1.5 before:left-2 before:top-1.5 before:w-0.5 before:bg-slate-100 before:content-['']">
-              {versions.map((v) => (
-                <div key={v.quotationId} className="relative">
-                  <div
-                    className={`absolute -left-[22px] top-1 h-3.5 w-3.5 rounded-full border-2 border-white ${
-                      v.quotationId === detail.quotationId ? 'bg-blue-600 ring-4 ring-blue-50' : 'bg-slate-300'
-                    }`}
-                  />
-                  <div>
-                    <Link
-                      href={`/manager/quotations/${v.quotationId}`}
-                      className={`text-xs font-bold leading-none hover:underline ${v.quotationId === detail.quotationId ? 'text-blue-600' : 'text-slate-900'}`}
-                    >
-                      Phiên bản {v.version} — {STATUS_LABEL[v.status]}
-                    </Link>
-                    <p className="mt-1.5 text-[10px] font-semibold text-slate-400">{formatDate(v.createdAt)}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </motion.div>
+  const handleRemoveEditItem = (index: number) => setEditItems((prev) => prev.filter((_, i) => i !== index));
+
+  const editSubtotal = editItems.reduce((sum, it) => sum + it.unitPrice * it.quantity, 0);
+  const editDiscountTotal = editItems.reduce((sum, it) => sum + (it.discount ?? 0) * it.quantity, 0);
+  const editTotalAmount = editSubtotal - editDiscountTotal;
+
+  const handleSaveEditedItems = () => {
+    updateAdminQuotation(row.quotationId, {
+      items: editItems,
+      notes: editNotes,
+      subtotal: editSubtotal,
+      discount: editDiscountTotal,
+      totalAmount: editTotalAmount,
+      updatedAt: new Date().toISOString().slice(0, 10),
+    });
+    refresh();
+    setIsEditingItems(false);
+  };
+
+  // ---- Đối chiếu khảo sát ----
+  const handleSyncFromSurvey = () => {
+    if (!surveyReport) return;
+    const syncedItems: AdminQuotationLineItem[] = surveyReport.quoteItems.map((item, idx) => ({
+      id: `qi-survey-sync-${idx}-${Date.now()}`,
+      name: item.name,
+      category: item.category,
+      unit: item.unit,
+      unitPrice: item.price,
+      quantity: item.quantity,
+      discount: 0,
+    }));
+    const subtotal = syncedItems.reduce((sum, it) => sum + it.unitPrice * it.quantity, 0);
+    updateAdminQuotation(row.quotationId, { items: syncedItems, subtotal, discount: 0, totalAmount: subtotal, updatedAt: new Date().toISOString().slice(0, 10) });
+    setSyncSuccess(true);
+    refresh();
+  };
+
+  const handleApproveFromSurvey = () => {
+    updateAdminQuotation(row.quotationId, { status: 'approved', updatedAt: new Date().toISOString().slice(0, 10) });
+    refresh();
+  };
+
+  return (
+    <div className="p-6 print:p-0">
+      <div className="flex items-center gap-1.5 text-sm text-slate-400 print:hidden">
+        <span>Báo giá</span>
+        <ChevronRight className="h-3.5 w-3.5" />
+        <Link href="/manager/quotations" className="hover:text-blue-600 hover:underline">
+          Danh sách báo giá
+        </Link>
+        <ChevronRight className="h-3.5 w-3.5" />
+        <span className="font-medium text-slate-600">{row.code}</span>
       </div>
 
+      <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-slate-900">Báo giá {row.code}</h1>
+            <Badge variant={QUOTATION_STATUS_META[row.status].variant}>{QUOTATION_STATUS_META[row.status].label}</Badge>
+          </div>
+          <p className="mt-1 text-xs font-medium text-slate-500">
+            Phiên bản: v{row.version} | Tạo bởi: {row.assignee} (Kinh doanh)
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
+          {isEditingItems ? (
+            <>
+              <Button className="bg-green-600 hover:bg-green-700" onClick={handleSaveEditedItems}>
+                <Check className="h-4 w-4" />
+                Lưu thay đổi
+              </Button>
+              <Button variant="secondary" onClick={() => setIsEditingItems(false)}>
+                <X className="h-4 w-4" />
+                Hủy bỏ
+              </Button>
+            </>
+          ) : (
+            <>
+              {row.status !== 'approved' && (
+                <Button variant="secondary" onClick={handleOpenSurveyModal}>
+                  <ClipboardCheck className="h-4 w-4" />
+                  {row.status === 'draft'
+                    ? linkedSurveyPlan
+                      ? 'Quản lý kế hoạch khảo sát'
+                      : 'Lập kế hoạch khảo sát báo giá'
+                    : row.surveyAssignment
+                      ? 'Đổi phân công khảo sát'
+                      : 'Tạo phân công khảo sát báo giá'}
+                </Button>
+              )}
+              {row.status === 'surveying' && surveyReport && (
+                <Button variant="secondary" onClick={() => setIsSurveyComparisonOpen(true)}>
+                  <GitCompare className="h-4 w-4 text-blue-600" />
+                  Xem đối chiếu khảo sát
+                </Button>
+              )}
+              {detailPage === 1 && (
+                <>
+                  <Button variant="secondary" onClick={handleCopyImage} isLoading={copyState === 'copying'}>
+                    {copyState === 'copied' ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                    {copyState === 'copied' ? 'Đã sao chép!' : copyState === 'error' ? 'Sao chép lỗi' : 'Sao chép ảnh'}
+                  </Button>
+                  <Button variant="secondary" onClick={() => window.print()}>
+                    <Printer className="h-4 w-4" />
+                    In báo giá
+                  </Button>
+                </>
+              )}
+              {canDelete && (
+                <Button variant="secondary" onClick={() => setIsDeleteOpen(true)}>
+                  <Trash2 className="h-4 w-4" />
+                  Xóa
+                </Button>
+              )}
+              {canApproveReject && (
+                <>
+                  <Button className="bg-green-600 hover:bg-green-700" onClick={handleApprove}>
+                    <CheckCircle2 className="h-4 w-4" />
+                    Phê duyệt báo giá
+                  </Button>
+                  <Button variant="secondary" className="border-red-100 bg-red-50 text-red-600 hover:bg-red-100" onClick={handleReject}>
+                    <X className="h-4 w-4" />
+                    Từ chối
+                  </Button>
+                </>
+              )}
+              {row.status === 'approved' &&
+                (linkedOrder ? (
+                  <Link href={`/manager/orders/${linkedOrder.orderId}`}>
+                    <Button>
+                      <FileSignature className="h-4 w-4" />
+                      {`Xem đơn đặt ${linkedOrder.orderId}`}
+                    </Button>
+                  </Link>
+                ) : (
+                  <Button onClick={() => setIsCreateOrderOpen(true)}>
+                    <FileSignature className="h-4 w-4" />
+                    Sinh hợp đồng & đơn đặt
+                  </Button>
+                ))}
+            </>
+          )}
+        </div>
+      </div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-40px' }}
+        transition={{ duration: 0.25 }}
+        className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-xs print:hidden"
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-slate-900">Phân công khảo sát báo giá</h2>
+          {row.status !== 'approved' && (
+            <button
+              type="button"
+              onClick={handleOpenSurveyModal}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              {row.surveyAssignment ? 'Đổi phân công' : 'Phân công'}
+            </button>
+          )}
+        </div>
+        <div className="mt-3">
+          {!row.surveyAssignment ? (
+            <p className="text-sm text-slate-500">Chưa phân công khảo sát cho báo giá này.</p>
+          ) : (
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <Avatar name={row.surveyAssignment.assigneeName} size="sm" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-800">{row.surveyAssignment.assigneeName}</p>
+                  <p className="truncate text-xs text-slate-400">
+                    {formatDate(row.surveyAssignment.date)} · {row.surveyAssignment.time}
+                    {row.surveyAssignment.notes ? ` — ${row.surveyAssignment.notes}` : ''}
+                  </p>
+                </div>
+              </div>
+              <Badge variant="info">Đã phân công</Badge>
+            </div>
+          )}
+        </div>
+      </motion.div>
+
+      <div className="mt-6">
+        {!isEditingItems && detailPage === 2 ? (
+          <div className="space-y-6">
+            <QuotationPicklistView row={row} />
+            <div className="mx-auto max-w-4xl">
+              <InventoryAvailabilityPanel items={equipmentCheckItems} />
+            </div>
+          </div>
+        ) : (
+          <motion.div
+            ref={quotationCardRef}
+            initial={{ opacity: 0, y: 12 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-40px' }}
+            transition={{ duration: 0.25 }}
+            className="mx-auto max-w-4xl rounded-xl border border-slate-200 bg-white p-8 shadow-xs"
+          >
+            {/* Letterhead */}
+            <div className="flex flex-wrap justify-between gap-6 border-b border-slate-100 pb-6">
+              <div>
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-slate-900">
+                    <span className="font-mono text-sm font-black text-white">BN</span>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold uppercase tracking-wider text-slate-900">Công ty Sự kiện BN</h4>
+                    <p className="text-xs text-slate-500">Giải pháp tổ chức sự kiện đỉnh cao tại Việt Nam</p>
+                  </div>
+                </div>
+                <div className="mt-4 space-y-1 text-xs text-slate-500">
+                  <p>VP: 120 Điện Biên Phủ, Phường Đa Kao, Quận 1, TP. HCM</p>
+                  <p>Điện thoại: 0944 556 677 | Hòm thư: sales@bnevent.vn</p>
+                </div>
+              </div>
+
+              <div className="text-right">
+                <h3 className="text-lg font-bold uppercase tracking-widest text-slate-900">Báo giá chính thức</h3>
+                <p className="mt-1 font-mono text-xs font-bold text-slate-500">Số: {row.code}</p>
+                <div className="mt-4 space-y-1 text-xs text-slate-500">
+                  <p>Ngày lập: {formatDate(row.createdAt)}</p>
+                  <p>Cập nhật cuối: {formatDate(row.updatedAt)}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Customer + terms */}
+            <div className="mt-6 grid grid-cols-1 gap-8 rounded-xl border border-slate-100 bg-slate-50 p-5 md:grid-cols-2">
+              <div>
+                <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Đơn vị thụ hưởng (Khách hàng)</p>
+                <div className="space-y-1.5 text-xs">
+                  <p className="text-sm font-bold text-slate-900">{row.customerName}</p>
+                  <p className="flex items-center gap-1.5 text-slate-600">
+                    <Phone className="h-3.5 w-3.5 text-slate-400" /> {row.customerPhone}
+                  </p>
+                  <p className="flex items-center gap-1.5 text-slate-600">
+                    <Mail className="h-3.5 w-3.5 text-slate-400" /> {detail.customerEmail}
+                  </p>
+                  <p className="flex items-center gap-1.5 text-slate-600">
+                    <MapPin className="h-3.5 w-3.5 text-slate-400" /> {detail.customerAddress}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <p className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-400">Ghi chú điều khoản</p>
+                  {isEditingItems ? (
+                    <textarea
+                      value={editNotes}
+                      onChange={(e) => setEditNotes(e.target.value)}
+                      placeholder="Ghi chú điều khoản hoặc mốc thanh toán..."
+                      className="h-20 w-full rounded border border-slate-200 bg-white px-3 py-2 text-xs leading-relaxed focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  ) : (
+                    <p className="text-xs italic leading-relaxed text-slate-700">{row.notes || 'Không có yêu cầu ghi chú gì thêm cho báo giá này.'}</p>
+                  )}
+                </div>
+                <div className="space-y-1 text-xs text-slate-500">
+                  <p className="font-semibold text-slate-700">Chính sách chung:</p>
+                  <p>• Báo giá có hiệu lực trong vòng 30 ngày kể từ ngày ban hành.</p>
+                  <p>• Tạm ứng trước 50% ngay sau khi ký hợp đồng chính thức.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Items table / editor */}
+            {isEditingItems ? (
+              <div className="mt-6 space-y-4">
+                <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="flex items-center gap-1 text-xs font-bold text-slate-700">
+                    <Sparkles className="h-3.5 w-3.5 text-blue-500" />
+                    Thêm nhanh từ danh mục mẫu:
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {QUOTATION_CATALOGUE.map((catItem) => (
+                      <button
+                        key={catItem.name}
+                        type="button"
+                        onClick={() => handleAddCatalogueEditItem(catItem)}
+                        className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 shadow-2xs transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                      >
+                        <Plus className="h-3 w-3 text-blue-600" />
+                        {catItem.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full min-w-[720px] text-left text-xs">
+                    <thead className="border-b border-slate-100 bg-slate-50 font-bold uppercase tracking-wider text-slate-600">
+                      <tr>
+                        <th className="px-3 py-2.5">Tên hạng mục *</th>
+                        <th className="w-40 px-3 py-2.5">Phân loại</th>
+                        <th className="w-16 px-3 py-2.5 text-center">ĐVT</th>
+                        <th className="w-16 px-3 py-2.5 text-center">SL</th>
+                        <th className="w-28 px-3 py-2.5 text-right">Đơn giá (đ)</th>
+                        <th className="w-24 px-3 py-2.5 text-right">Giảm giá/item</th>
+                        <th className="w-28 px-3 py-2.5 text-right">Thành tiền</th>
+                        <th className="w-10 px-3 py-2.5 text-center">Xóa</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {editItems.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="py-6 text-center italic text-slate-400">
+                            Chưa có hạng mục nào. Chọn từ danh mục mẫu hoặc bấm &quot;Thêm dòng nhập tay&quot; bên dưới.
+                          </td>
+                        </tr>
+                      ) : (
+                        editItems.map((item, idx) => (
+                          <tr key={item.id} className="hover:bg-slate-50/50">
+                            <td className="px-2 py-2">
+                              <input
+                                type="text"
+                                required
+                                placeholder="Nhập tên dịch vụ/thiết bị..."
+                                value={item.name}
+                                onChange={(e) => handleUpdateEditItemField(idx, 'name', e.target.value)}
+                                className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              />
+                            </td>
+                            <td className="px-2 py-2">
+                              <select
+                                value={item.category}
+                                onChange={(e) => handleUpdateEditItemField(idx, 'category', e.target.value)}
+                                className="w-full rounded border border-slate-200 bg-slate-50 px-1.5 py-1 text-xs focus:outline-none"
+                              >
+                                {ITEM_CATEGORY_OPTIONS.map((cat) => (
+                                  <option key={cat} value={cat}>
+                                    {cat}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="px-2 py-2">
+                              <input
+                                type="text"
+                                placeholder="Cái"
+                                value={item.unit ?? ''}
+                                onChange={(e) => handleUpdateEditItemField(idx, 'unit', e.target.value)}
+                                className="w-full rounded border border-slate-200 bg-slate-50 px-1 py-1 text-center text-xs focus:outline-none"
+                              />
+                            </td>
+                            <td className="px-2 py-2">
+                              <input
+                                type="number"
+                                min={1}
+                                value={item.quantity}
+                                onChange={(e) => handleUpdateEditItemField(idx, 'quantity', Number(e.target.value) || 1)}
+                                className="w-full rounded border border-slate-200 bg-slate-50 px-1 py-1 text-center text-xs font-bold focus:outline-none"
+                              />
+                            </td>
+                            <td className="px-2 py-2">
+                              <input
+                                type="number"
+                                min={0}
+                                value={item.unitPrice}
+                                onChange={(e) => handleUpdateEditItemField(idx, 'unitPrice', Number(e.target.value) || 0)}
+                                className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1 text-right text-xs font-medium focus:outline-none"
+                              />
+                            </td>
+                            <td className="px-2 py-2">
+                              <input
+                                type="number"
+                                min={0}
+                                value={item.discount ?? 0}
+                                onChange={(e) => handleUpdateEditItemField(idx, 'discount', Number(e.target.value) || 0)}
+                                className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1 text-right text-xs font-medium text-red-600 focus:outline-none"
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-right font-bold text-slate-900">{formatCurrency((item.unitPrice - (item.discount ?? 0)) * item.quantity)}</td>
+                            <td className="px-2 py-2 text-center">
+                              <button type="button" onClick={() => handleRemoveEditItem(idx)} className="p-1 text-slate-400 transition hover:text-red-600">
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleAddManualEditItem}
+                  className="flex items-center gap-1 rounded bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-600 transition hover:text-blue-800"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Thêm dòng nhập tay
+                </button>
+              </div>
+            ) : (
+              <div className="mt-6">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-900">Hạng mục báo giá</p>
+                  {!isLinkedToContract && (
+                    <button
+                      type="button"
+                      onClick={startEditingItems}
+                      aria-label="Sửa hạng mục"
+                      className="text-slate-400 hover:text-blue-600"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full text-left text-xs">
+                    <thead className="border-b border-slate-100 bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-600">
+                      <tr>
+                        <th className="w-12 py-3 px-4 text-center">STT</th>
+                        <th className="py-3 px-4">Tên hạng mục sự kiện / Dịch vụ</th>
+                        <th className="w-28 py-3 px-4">Phân loại</th>
+                        <th className="w-16 py-3 px-4 text-center">ĐVT</th>
+                        <th className="w-16 py-3 px-4 text-center">SL</th>
+                        <th className="w-28 py-3 px-4 text-right">Đơn giá</th>
+                        <th className="w-24 py-3 px-4 text-right">Chiết khấu</th>
+                        <th className="w-28 py-3 px-4 text-right">Thành tiền</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {row.items.map((item, idx) => {
+                        const lineTotal = (item.unitPrice - (item.discount ?? 0)) * item.quantity;
+                        return (
+                          <tr key={item.id}>
+                            <td className="py-3 px-4 text-center font-medium text-slate-500">{idx + 1}</td>
+                            <td className="py-3 px-4 font-semibold text-slate-900">{item.name}</td>
+                            <td className="py-3 px-4 text-slate-600">{item.category}</td>
+                            <td className="py-3 px-4 text-center text-slate-600">{item.unit ?? '—'}</td>
+                            <td className="py-3 px-4 text-center font-bold text-slate-800">{item.quantity}</td>
+                            <td className="py-3 px-4 text-right text-slate-700">{formatCurrency(item.unitPrice)}</td>
+                            <td className="py-3 px-4 text-right font-medium text-red-600">-{formatCurrency(item.discount ?? 0)}</td>
+                            <td className="py-3 px-4 text-right font-bold text-slate-950">{formatCurrency(lineTotal)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Summary */}
+            <div className="mt-6 flex justify-end">
+              <div className="w-full max-w-xs space-y-2 border-t border-slate-100 pt-4 text-sm">
+                <div className="flex items-center justify-between text-slate-500">
+                  <span>Tổng tiền dịch vụ:</span>
+                  <span className="font-medium text-slate-800">{formatCurrency(isEditingItems ? editSubtotal : row.subtotal)}</span>
+                </div>
+                <div className="flex items-center justify-between text-slate-500">
+                  <span>Khấu trừ giảm giá:</span>
+                  <span className="font-semibold text-red-600">-{formatCurrency(isEditingItems ? editDiscountTotal : row.discount)}</span>
+                </div>
+                <div className="flex items-center justify-between border-t border-slate-200 pt-2.5 text-base">
+                  <span className="font-black text-slate-900">Thành tiền (VND):</span>
+                  <span className="text-xl font-bold text-blue-600">{formatCurrency(isEditingItems ? editTotalAmount : row.totalAmount)}</span>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </div>
+
+      {/* Pagination dots — chuyển giữa "Báo giá chính thức" và "Picklist chi tiết" */}
+      {!isEditingItems && (
+        <div className="mx-auto my-4 flex max-w-4xl flex-col items-center justify-center gap-2 border-y border-slate-100 py-4 print:hidden">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setDetailPage(1)}
+              title="Trang 1: Báo giá chính thức"
+              className={`h-3.5 w-3.5 rounded-full transition-all focus:outline-none ${detailPage === 1 ? 'scale-125 bg-blue-600 ring-4 ring-blue-100' : 'bg-slate-300 hover:bg-slate-400'}`}
+            />
+            <button
+              type="button"
+              onClick={() => setDetailPage(2)}
+              title="Trang 2: Picklist chi tiết vật tư"
+              className={`h-3.5 w-3.5 rounded-full transition-all focus:outline-none ${detailPage === 2 ? 'scale-125 bg-blue-600 ring-4 ring-blue-100' : 'bg-slate-300 hover:bg-slate-400'}`}
+            />
+          </div>
+          <p className="mt-1 text-xs font-bold text-slate-500">
+            {detailPage === 1 ? 'Đang xem: Trang 1/2 — Bản đề xuất báo giá chính thức' : 'Đang xem: Trang 2/2 — Bản kê Picklist chi tiết vật tư chuẩn bị kho'}
+          </p>
+        </div>
+      )}
+
+      {row.status === 'surveying' && surveyReport && (
+        <Modal isOpen={isSurveyComparisonOpen} onClose={() => setIsSurveyComparisonOpen(false)} size="2xl" footer={<Button variant="secondary" onClick={() => setIsSurveyComparisonOpen(false)}>Đóng</Button>}>
+          <SurveyComparisonPanel
+            quotationItems={row.items}
+            surveyReport={surveyReport}
+            syncSuccess={syncSuccess}
+            onSync={handleSyncFromSurvey}
+            onApprove={handleApproveFromSurvey}
+          />
+        </Modal>
+      )}
+
+      {row.status === 'approved' && !linkedOrder && (
+        <CreateOrderFromQuotationModal
+          isOpen={isCreateOrderOpen}
+          onClose={() => setIsCreateOrderOpen(false)}
+          quotation={row}
+          onSaved={() => setIsCreateOrderOpen(false)}
+        />
+      )}
+
       <Modal
-        isOpen={isConfirmModalOpen}
-        onClose={() => (isConfirming ? null : setIsConfirmModalOpen(false))}
-        title="Xác nhận & duyệt báo giá"
-        subtitle="Báo giá sau khi duyệt sẽ không thể chỉnh sửa hoặc xóa."
+        isOpen={isDeleteOpen}
+        onClose={() => setIsDeleteOpen(false)}
+        title="Xóa báo giá"
+        subtitle={`Bạn có chắc muốn xóa báo giá ${row.code}? Hành động này không thể hoàn tác.`}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setIsConfirmModalOpen(false)} disabled={isConfirming}>
+            <Button variant="secondary" onClick={() => setIsDeleteOpen(false)}>
               Hủy
             </Button>
-            <Button variant="primary" onClick={handleConfirm} isLoading={isConfirming}>
-              Xác nhận duyệt
+            <Button variant="danger" onClick={handleDeleteConfirm}>
+              Xóa báo giá
             </Button>
           </>
         }
       >
-        <div className="space-y-3 text-sm">
-          <p className="text-slate-600">
-            Duyệt báo giá <strong>{detail.quotationCode}</strong> (phiên bản {detail.version}) với tổng tiền{' '}
-            <strong>{formatCurrency(detail.totalAmount)}</strong> cho khách hàng <strong>{customer.customerName}</strong>?
-          </p>
-          {confirmError && <p className="text-sm text-red-600">{confirmError}</p>}
-        </div>
+        <div />
       </Modal>
 
-      <CreateQuotationModal
-        isOpen={isEditModalOpen}
-        customerId={detail.customerId}
-        editingQuotation={detail}
-        onClose={() => setIsEditModalOpen(false)}
-        onSuccess={handleEditSuccess}
-      />
-
-      <DeleteQuotationModal
-        isOpen={isDeleteModalOpen}
-        quotation={detail}
-        onClose={() => setIsDeleteModalOpen(false)}
-        onSuccess={handleDeleteSuccess}
-      />
+      <Modal
+        isOpen={isSurveyModalOpen}
+        onClose={() => setIsSurveyModalOpen(false)}
+        title="Tạo phân công khảo sát báo giá"
+        subtitle={`Chọn nhân viên đi khảo sát hiện trường để làm căn cứ lập báo giá ${row.code}.`}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setIsSurveyModalOpen(false)}>
+              Hủy
+            </Button>
+            <Button onClick={handleSurveySubmit}>Lưu phân công</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Select
+            label="Nhân viên khảo sát"
+            required
+            value={surveyForm.assigneeName}
+            onChange={(e) => setSurveyForm((prev) => ({ ...prev, assigneeName: e.target.value }))}
+            options={ASSIGNEE_POOL.map((name) => ({ value: name, label: name }))}
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Ngày khảo sát"
+              type="date"
+              required
+              value={surveyForm.date}
+              onChange={(e) => setSurveyForm((prev) => ({ ...prev, date: e.target.value }))}
+            />
+            <Input
+              label="Giờ khảo sát"
+              type="time"
+              required
+              value={surveyForm.time}
+              onChange={(e) => setSurveyForm((prev) => ({ ...prev, time: e.target.value }))}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700">Ghi chú</label>
+            <textarea
+              rows={3}
+              value={surveyForm.notes}
+              onChange={(e) => setSurveyForm((prev) => ({ ...prev, notes: e.target.value }))}
+              placeholder="Ví dụ: cần khảo sát mặt bằng sảnh, lối vận chuyển thiết bị..."
+              className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

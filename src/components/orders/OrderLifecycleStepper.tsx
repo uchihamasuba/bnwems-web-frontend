@@ -1,7 +1,7 @@
 import { Check } from 'lucide-react';
 import type { OrderStatus } from '@/types/order';
 
-const STEP_LABELS = ['Mới', 'Đã khảo sát', 'Đã báo giá', 'Đã xác nhận', 'Đang xử lý', 'Hoàn thành'];
+const STEP_LABELS = ['Mới', 'Đã khảo sát', 'Đã báo giá', 'Xác nhận', 'Đang làm', 'Hoàn thành'];
 
 // Enum OrderStatus thật chỉ có 5 giá trị (chưa có state machine chi tiết theo doc nghiệp vụ gốc —
 // xem CLAUDE.md mục 1), nên 2 bước "Đã khảo sát"/"Đã báo giá" chỉ là minh họa trung gian: bất kỳ

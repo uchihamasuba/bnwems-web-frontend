@@ -1,90 +1,287 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { Plus, ClipboardList, ListChecks, Loader2, CircleDashed } from 'lucide-react';
-import { schedulePlanApiService } from '@/services/schedulePlan.service';
-import { orderApiService } from '@/services/order.service';
-import { customerApiService } from '@/services/customer.service';
+import { useMemo, useState } from 'react';
+import Link from 'next/link';
+import { motion } from 'framer-motion';
+import { Camera, CheckCircle2, ClipboardList, Eye, ListChecks, MapPin, Search, Users } from 'lucide-react';
+import { Table, TableColumn } from '@/components/ui/Table';
+import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
+import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
 import DashboardStats, { KpiCardItem } from '@/components/reports/DashboardStats';
-import CreateTaskModal from '@/components/schedule/CreateTaskModal';
-import TaskKanbanBoard from '@/components/schedule/TaskKanbanBoard';
-import type { SchedulePlan } from '@/types/schedulePlan';
-import type { Order } from '@/types/order';
-import type { Customer } from '@/types/customer';
+import {
+  FlatWorkTask,
+  PLANNING_STAFF_POOL,
+  TASK_STATUS_META,
+  TaskStatus,
+  getAllAdminWorkTasks,
+  updateAdminScheduleTask,
+} from '@/mocks/adminSchedulePlansMock';
 
-async function loadBoardData() {
-  const [plansRes, ordersRes, customersRes] = await Promise.all([
-    schedulePlanApiService.getSchedulePlans({ limit: 200 }),
-    orderApiService.getOrders({ limit: 200 }),
-    customerApiService.getCustomers({ limit: 200 }),
-  ]);
-  return {
-    plans: (plansRes.data ?? []) as SchedulePlan[],
-    orders: (ordersRes.data ?? []) as Order[],
-    customers: (customersRes.data ?? []) as Customer[],
-  };
-}
+// Trang thuần giao diện mới — chưa có màn hình admin/coordination tương ứng để mirror (xem
+// docs/manager-features-checklist.md mục "Work Task"). Gộp toàn bộ công việc kỹ thuật (PlanWorkTask)
+// từ mọi Kế hoạch & phân công (src/mocks/adminSchedulePlansMock.ts) thành 1 bảng độc lập cho Manager
+// theo dõi/tái phân công theo từng nhân sự — khác trang Lịch trình vốn nhóm việc theo từng kế hoạch.
 
-export default function Page() {
-  const [plans, setPlans] = useState<SchedulePlan[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
+type StatusFilter = '' | TaskStatus;
 
-  const refresh = () =>
-    loadBoardData().then(({ plans: p, orders: o, customers: c }) => {
-      setPlans(p);
-      setOrders(o);
-      setCustomers(c);
+const STATUS_ORDER: TaskStatus[] = ['TODO', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED', 'BLOCKED'];
+
+export default function ManagerWorkTaskPage() {
+  const [tasks, setTasks] = useState<FlatWorkTask[]>(() => getAllAdminWorkTasks());
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
+  const [assigneeFilter, setAssigneeFilter] = useState('');
+  const [editingTask, setEditingTask] = useState<FlatWorkTask | null>(null);
+
+  const refresh = () => setTasks(getAllAdminWorkTasks());
+
+  const assigneeOptions = useMemo(() => Array.from(new Set(tasks.map((t) => t.assignee))).sort(), [tasks]);
+
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return tasks.filter((t) => {
+      if (statusFilter && t.status !== statusFilter) return false;
+      if (assigneeFilter && t.assignee !== assigneeFilter) return false;
+      if (!term) return true;
+      return (
+        t.title.toLowerCase().includes(term) ||
+        t.orderId.toLowerCase().includes(term) ||
+        t.customerName.toLowerCase().includes(term) ||
+        t.assignee.toLowerCase().includes(term)
+      );
     });
+  }, [tasks, search, statusFilter, assigneeFilter]);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag toggled before/after the fetch below, not a render loop
-    setIsLoading(true);
-    refresh().finally(() => setIsLoading(false));
-  }, []);
+  const kpis: KpiCardItem[] = [
+    { label: 'Tổng công việc', value: tasks.length, icon: ClipboardList, iconColor: 'blue' },
+    { label: 'Chưa phân công', value: tasks.filter((t) => t.status === 'TODO').length, icon: ListChecks, iconColor: 'amber' },
+    { label: 'Đang thực hiện', value: tasks.filter((t) => t.status === 'ASSIGNED' || t.status === 'IN_PROGRESS').length, icon: Users, iconColor: 'blue' },
+    { label: 'Hoàn thành', value: tasks.filter((t) => t.status === 'COMPLETED').length, icon: CheckCircle2, iconColor: 'green' },
+  ];
 
-  const orderById = useMemo(() => new Map(orders.map((o) => [o.orderId, o])), [orders]);
-  const customerById = useMemo(() => new Map(customers.map((c) => [c.customerId, c])), [customers]);
+  const handleSaveTask = (patch: Partial<FlatWorkTask>) => {
+    if (!editingTask) return;
+    updateAdminScheduleTask(editingTask.planId, editingTask.id, patch);
+    refresh();
+    setEditingTask(null);
+  };
 
-  const kpiItems: KpiCardItem[] = [
-    { label: 'Tổng kế hoạch', value: plans.length, icon: ClipboardList, iconColor: 'blue' },
-    { label: 'Chờ xử lý', value: plans.filter((p) => p.status === 'PENDING').length, icon: CircleDashed, iconColor: 'amber' },
-    { label: 'Đang thực hiện', value: plans.filter((p) => p.status === 'IN_PROGRESS').length, icon: Loader2, iconColor: 'blue' },
-    { label: 'Hoàn thành', value: plans.filter((p) => p.status === 'COMPLETED').length, icon: ListChecks, iconColor: 'green' },
+  const columns: TableColumn<FlatWorkTask>[] = [
+    {
+      key: 'title',
+      label: 'Công việc',
+      render: (t) => (
+        <div>
+          <p className="font-semibold text-slate-800">{t.title}</p>
+          <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-400">
+            <MapPin className="h-3.5 w-3.5" />
+            {t.location}
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: 'order',
+      label: 'Đơn đặt / Kế hoạch',
+      render: (t) => (
+        <div>
+          <Link href={`/manager/orders/${t.orderId}`} className="font-mono text-xs font-bold text-blue-600 hover:underline">
+            {t.orderId}
+          </Link>
+          <p className="mt-0.5 text-xs text-slate-400">{t.eventName}</p>
+        </div>
+      ),
+    },
+    {
+      key: 'assignee',
+      label: 'Phụ trách',
+      render: (t) => (
+        <div>
+          <p className="font-medium text-slate-800">{t.assignee}</p>
+          {t.team.length > 0 && <p className="mt-0.5 text-xs text-slate-400">+{t.team.length} người đồng hành</p>}
+        </div>
+      ),
+    },
+    { key: 'startTime', label: 'Thời gian', render: (t) => <span className="font-mono text-xs text-slate-600">{t.startTime}</span> },
+    {
+      key: 'status',
+      label: 'Trạng thái',
+      render: (t) => (
+        <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${TASK_STATUS_META[t.status].badgeClass}`}>{TASK_STATUS_META[t.status].label}</span>
+      ),
+    },
+    {
+      key: 'evidence',
+      label: 'Minh chứng',
+      render: (t) =>
+        t.evidencePhotoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={t.evidencePhotoUrl} alt="Ảnh thi công minh chứng" className="h-9 w-9 rounded-lg object-cover ring-1 ring-slate-200" />
+        ) : (
+          <span className="text-xs text-slate-300">—</span>
+        ),
+    },
+    {
+      key: 'actions',
+      label: 'Thao tác',
+      render: (t) => (
+        <button
+          type="button"
+          onClick={() => setEditingTask(t)}
+          aria-label="Xem / cập nhật công việc"
+          title="Xem / cập nhật công việc"
+          className="inline-flex rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600"
+        >
+          <Eye className="h-4 w-4" />
+        </button>
+      ),
+    },
   ];
 
   return (
     <div className="p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Giao việc cho nhân sự</h1>
-          <p className="mt-1 text-sm text-slate-500">Theo dõi và điều phối công việc khảo sát/vận hành theo trạng thái.</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setIsCreateOpen(true)}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
-        >
-          <Plus className="h-4 w-4" />
-          Tạo công việc mới
-        </button>
+      <div>
+        <h1 className="flex items-center gap-2.5 text-2xl font-bold text-slate-900">
+          <ClipboardList className="h-6 w-6 text-blue-600" />
+          Công việc (Work Task)
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Toàn bộ công việc kỹ thuật đã giao cho từng Staff, gộp từ mọi kế hoạch điều phối — theo dõi tiến độ và tái phân công khi cần.
+        </p>
       </div>
 
       <div className="mt-6">
-        <DashboardStats items={kpiItems} />
+        <DashboardStats items={kpis} />
       </div>
 
-      {isLoading ? (
-        <p className="mt-6 text-sm text-slate-400">Đang tải...</p>
-      ) : (
-        <div className="mt-6">
-          <TaskKanbanBoard plans={plans} orderById={orderById} customerById={customerById} onRefresh={refresh} />
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-40px' }}
+        transition={{ duration: 0.25 }}
+        className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs"
+      >
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="min-w-[240px] flex-1">
+            <Input
+              placeholder="Tìm theo tên việc, mã đơn, khách hàng, người phụ trách..."
+              icon={<Search className="h-4 w-4" />}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div className="w-52">
+            <Select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              options={[{ value: '', label: 'Tất cả trạng thái' }, ...STATUS_ORDER.map((s) => ({ value: s, label: TASK_STATUS_META[s].label }))]}
+            />
+          </div>
+          <div className="w-52">
+            <Select
+              value={assigneeFilter}
+              onChange={(e) => setAssigneeFilter(e.target.value)}
+              options={[{ value: '', label: 'Tất cả người phụ trách' }, ...assigneeOptions.map((a) => ({ value: a, label: a }))]}
+            />
+          </div>
         </div>
-      )}
 
-      <CreateTaskModal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} onCreated={refresh} />
+        <div className="mt-4 overflow-x-auto">
+          <Table columns={columns} rows={filtered} rowKey={(row) => `${row.planId}-${row.id}`} />
+        </div>
+      </motion.div>
+
+      <TaskEditModal task={editingTask} onClose={() => setEditingTask(null)} onSave={handleSaveTask} />
     </div>
+  );
+}
+
+interface TaskEditModalProps {
+  task: FlatWorkTask | null;
+  onClose: () => void;
+  onSave: (patch: Partial<FlatWorkTask>) => void;
+}
+
+function TaskEditModal({ task, onClose, onSave }: Readonly<TaskEditModalProps>) {
+  const [assignee, setAssignee] = useState(task?.assignee ?? '');
+  const [status, setStatus] = useState<TaskStatus>(task?.status ?? 'TODO');
+  const [wasTaskId, setWasTaskId] = useState(task?.id);
+
+  if (task && task.id !== wasTaskId) {
+    setWasTaskId(task.id);
+    setAssignee(task.assignee);
+    setStatus(task.status);
+  }
+
+  if (!task) return null;
+
+  return (
+    <Modal
+      isOpen={Boolean(task)}
+      onClose={onClose}
+      title={task.title}
+      subtitle={`${task.orderId} · ${task.eventName}`}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Đóng
+          </Button>
+          <Button onClick={() => onSave({ assignee, status })}>Lưu thay đổi</Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+          <p className="flex items-center gap-1.5">
+            <MapPin className="h-3.5 w-3.5 text-slate-400" />
+            {task.location}
+          </p>
+          <p className="mt-1">
+            Thời gian: <strong className="text-slate-800">{task.startTime}</strong>
+          </p>
+          {task.requirements && <p className="mt-1 italic text-slate-500">{task.requirements}</p>}
+        </div>
+
+        <Select
+          label="Người phụ trách chính"
+          value={assignee}
+          onChange={(e) => setAssignee(e.target.value)}
+          options={PLANNING_STAFF_POOL.map((s) => ({ value: s.name, label: `${s.name} (${s.role})` }))}
+        />
+
+        {task.team.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Nhân sự đồng hành</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {task.team.map((name) => (
+                <span key={name} className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                  {name}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <Select
+          label="Trạng thái"
+          value={status}
+          onChange={(e) => setStatus(e.target.value as TaskStatus)}
+          options={STATUS_ORDER.map((s) => ({ value: s, label: TASK_STATUS_META[s].label }))}
+        />
+
+        {task.evidencePhotoUrl && (
+          <div>
+            <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              <Camera className="h-3.5 w-3.5" />
+              Ảnh minh chứng đã nhận từ hiện trường
+            </p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={task.evidencePhotoUrl} alt="Ảnh thi công minh chứng" className="max-h-56 w-full rounded-lg border border-slate-200 object-contain" />
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }

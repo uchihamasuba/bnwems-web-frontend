@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/Input';
 import { quotationApiService } from '@/services/quotation.service';
 import { catalogApiService } from '@/services/catalog.service';
 import { formatCurrency } from '@/utils/formatCurrency';
+import { getItemContent } from '@/utils/catalogItemContent';
 import type { QuotationDetail } from '@/types/quotation';
 import type { Item } from '@/types/catalog';
 
@@ -256,7 +257,26 @@ export default function CreateQuotationModal({
                         </button>
                       </div>
                     </div>
-                    {catalogItem && <p className="mt-2 text-xs text-slate-400">Đơn vị: {catalogItem.unit}</p>}
+                    {catalogItem && (
+                      <div className="mt-2 space-y-0.5">
+                        <p className="text-xs text-slate-400">Đơn vị: {catalogItem.unit}</p>
+                        {(() => {
+                          const content = getItemContent(catalogItem, catalogItem.itemName);
+                          return (
+                            <p
+                              className={`text-xs ${content.isMock ? 'italic text-slate-400' : 'text-slate-500'}`}
+                              title={
+                                content.isMock
+                                  ? 'Backend chưa có API mô tả chi tiết loại thiết bị (equipment_type_details) — dữ liệu minh họa'
+                                  : undefined
+                              }
+                            >
+                              {content.text}
+                            </p>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </div>
                 );
               })}

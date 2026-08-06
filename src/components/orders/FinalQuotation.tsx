@@ -10,6 +10,7 @@ import CreateQuotationModal from '@/components/orders/CreateQuotationModal';
 import { quotationApiService } from '@/services/quotation.service';
 import { catalogApiService } from '@/services/catalog.service';
 import { formatCurrency } from '@/utils/formatCurrency';
+import { getItemContent } from '@/utils/catalogItemContent';
 import type { Quotation, QuotationDetail, QuotationItem } from '@/types/quotation';
 import type { Item } from '@/types/catalog';
 
@@ -34,7 +35,7 @@ interface FinalQuotationProps {
 // khái niệm "phiên bản mới" gắn thêm vào order hiện tại. Xem docs/more-require.md.
 export default function FinalQuotation({ quotationId, customerId, canManage, onQuotationChanged }: Readonly<FinalQuotationProps>) {
   const [quotation, setQuotation] = useState<QuotationDetail | null>(null);
-  const [itemNameById, setItemNameById] = useState<Map<string, string>>(new Map());
+  const [itemById, setItemById] = useState<Map<string, Item>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [refreshToken, setRefreshToken] = useState(0);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -60,7 +61,7 @@ export default function FinalQuotation({ quotationId, customerId, canManage, onQ
   useEffect(() => {
     catalogApiService.getItems({ limit: 200 }).then((res) => {
       const items: Item[] = res.data ?? [];
-      setItemNameById(new Map(items.map((item) => [item.itemId, item.itemName])));
+      setItemById(new Map(items.map((item) => [item.itemId, item])));
     });
   }, []);
 
@@ -80,7 +81,22 @@ export default function FinalQuotation({ quotationId, customerId, canManage, onQ
     {
       key: 'itemId',
       label: 'Hạng mục dịch vụ',
-      render: (row) => itemNameById.get(row.itemId) ?? row.itemName ?? `#${row.itemId}`,
+      render: (row) => {
+        const catalogItem = itemById.get(row.itemId);
+        const itemName = catalogItem?.itemName ?? row.itemName ?? `#${row.itemId}`;
+        const content = row.content ? { text: row.content, isMock: false } : getItemContent(catalogItem, itemName);
+        return (
+          <div>
+            <p className="font-medium text-slate-800">{itemName}</p>
+            <p
+              className={`mt-0.5 text-xs ${content.isMock ? 'italic text-slate-400' : 'text-slate-500'}`}
+              title={content.isMock ? 'Backend chưa có API mô tả chi tiết loại thiết bị (equipment_type_details) — dữ liệu minh họa' : undefined}
+            >
+              {content.text}
+            </p>
+          </div>
+        );
+      },
     },
     { key: 'quantity', label: 'Số lượng' },
     { key: 'price', label: 'Đơn giá', render: (row) => formatCurrency(row.price) },

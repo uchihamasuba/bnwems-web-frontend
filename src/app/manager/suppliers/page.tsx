@@ -1,325 +1,301 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
-import { Search, Edit2, Trash2, Star, Package, Users, Award, Truck } from 'lucide-react';
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
+import { useMemo, useState } from 'react';
+import { Truck, Search, Eye, Pencil, Lock, LockOpen, MapPin, Phone, Plus } from 'lucide-react';
+import { Table, TableColumn } from '@/components/ui/Table';
+import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import AddSupplierModal from '@/components/suppliers/AddSupplierModal';
-import CreateProcurementModal from '@/components/suppliers/CreateProcurementModal';
-import { supplierApiService } from '@/services/supplier.service';
-import { procurementApiService } from '@/services/procurement.service';
-import { orderApiService } from '@/services/order.service';
+import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
+import { SupplierDetailModal } from '@/components/suppliers/SupplierDetailModal';
 import { formatCurrency } from '@/utils/formatCurrency';
-import type { Supplier } from '@/types/supplier';
-import type { SupplierTransaction } from '@/types/procurement';
-import type { Order } from '@/types/order';
+import {
+  AdminSupplier,
+  AdminSupplierFormValues,
+  createAdminSupplier,
+  getAdminSuppliers,
+  toggleAdminSupplierStatus,
+  updateAdminSupplier,
+} from '@/mocks/adminSuppliersMock';
+import type { SupplierStatus } from '@/types/supplier';
 
-type Tab = 'suppliers' | 'orders';
+// Trang thuần giao diện — xem giải thích ở đầu src/mocks/adminSuppliersMock.ts. Khớp ảnh mẫu "Danh
+// sách Nhà cung cấp đối tác": tìm kiếm + lọc trạng thái, bảng đối tác kèm công nợ, modal thêm/sửa và
+// modal xem chi tiết. Thêm/sửa/khóa chỉ cập nhật state cục bộ (mất khi tải lại trang).
+// Mirror của src/app/admin/suppliers/page.tsx cho vai trò Manager — dùng chung mock/service/UI.
 
-const SERVICE_CATEGORIES = [
-  { value: '', label: 'Tất cả danh mục dịch vụ' },
-  { value: 'Hoa tươi & trang trí', label: 'Hoa tươi & trang trí' },
-  { value: 'Âm thanh & ánh sáng', label: 'Âm thanh & ánh sáng' },
-  { value: 'Thiết bị sự kiện', label: 'Thiết bị sự kiện' },
-  { value: 'Trang trí tiệc cưới', label: 'Trang trí tiệc cưới' },
-  { value: 'Phương tiện vận chuyển', label: 'Phương tiện vận chuyển' },
-];
+type StatusFilter = '' | SupplierStatus;
 
-function procStatusLabel(status: string): { label: string; variant: 'success' | 'warning' | 'error' | 'neutral' } {
-  if (status === 'APPROVED') return { label: 'Đã duyệt', variant: 'success' };
-  if (status === 'IN_PROGRESS') return { label: 'Đang thực hiện', variant: 'warning' };
-  if (status === 'COMPLETED') return { label: 'Hoàn thành', variant: 'success' };
-  if (status === 'CANCELLED') return { label: 'Đã hủy', variant: 'error' };
-  return { label: 'Chờ duyệt', variant: 'neutral' };
-}
-
-function StarRating({ rating }: { rating: number }) {
-  return (
-    <span className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map((s) => (
-        <Star
-          key={s}
-          className={`h-3.5 w-3.5 ${s <= rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`}
-        />
-      ))}
-    </span>
-  );
-}
+const EMPTY_FORM: AdminSupplierFormValues = { supplierCode: '', supplierName: '', phone: '', address: '', serviceType: '' };
 
 export default function Page() {
-  const [tab, setTab] = useState<Tab>('suppliers');
+  const [suppliers, setSuppliers] = useState<AdminSupplier[]>(() => getAdminSuppliers());
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
 
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [isLoadingSuppliers, setIsLoadingSuppliers] = useState(true);
-  const [supplierSearch, setSupplierSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
+  const [formModal, setFormModal] = useState<{ mode: 'create' | 'edit'; supplier: AdminSupplier | null } | null>(null);
+  const [detailSupplier, setDetailSupplier] = useState<AdminSupplier | null>(null);
 
-  const [transactions, setTransactions] = useState<SupplierTransaction[]>([]);
-  const [isLoadingOrders, setIsLoadingOrders] = useState(true);
-  const [orderSearch, setOrderSearch] = useState('');
+  const refresh = () => setSuppliers(getAdminSuppliers());
 
-  const [orders, setOrders] = useState<Order[]>([]);
-
-  const [isAddSupplierOpen, setIsAddSupplierOpen] = useState(false);
-  const [isCreateProcOpen, setIsCreateProcOpen] = useState(false);
-
-  const loadSuppliers = useCallback(() => {
-    setIsLoadingSuppliers(true);
-    supplierApiService
-      .getSuppliers({ limit: 200 })
-      .then((res) => setSuppliers(res.data))
-      .catch(() => setSuppliers([]))
-      .finally(() => setIsLoadingSuppliers(false));
-  }, []);
-
-  const loadTransactions = useCallback(() => {
-    setIsLoadingOrders(true);
-    procurementApiService
-      .getTransactions({ limit: 200 })
-      .then((res) => setTransactions(res.data))
-      .catch(() => setTransactions([]))
-      .finally(() => setIsLoadingOrders(false));
-  }, []);
-
-  useEffect(() => {
-    loadSuppliers();
-    loadTransactions();
-    orderApiService.getOrders({ limit: 200 }).then((res) => setOrders((res.data as Order[]) ?? []));
-  }, [loadSuppliers, loadTransactions]);
-
-  const filteredSuppliers = useMemo(() => {
-    const term = supplierSearch.trim().toLowerCase();
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
     return suppliers.filter((s) => {
-      if (categoryFilter && s.serviceType !== categoryFilter) return false;
+      if (statusFilter && s.status !== statusFilter) return false;
       if (!term) return true;
-      return s.supplierName.toLowerCase().includes(term) || s.serviceType.toLowerCase().includes(term);
+      return s.supplierName.toLowerCase().includes(term) || s.phone.toLowerCase().includes(term);
     });
-  }, [suppliers, supplierSearch, categoryFilter]);
+  }, [suppliers, search, statusFilter]);
 
-  const filteredTransactions = useMemo(() => {
-    const term = orderSearch.trim().toLowerCase();
-    if (!term) return transactions;
-    return transactions.filter(
-      (t) =>
-        t.orderId.toLowerCase().includes(term) ||
-        t.serviceTitle.toLowerCase().includes(term) ||
-        (t.supplierName?.toLowerCase().includes(term) ?? false),
-    );
-  }, [transactions, orderSearch]);
+  const handleToggleStatus = (supplier: AdminSupplier) => {
+    const message =
+      supplier.status === 'ACTIVE'
+        ? `Khóa đối tác "${supplier.supplierName}"? Đối tác sẽ không được chọn cho giao dịch mới.`
+        : `Mở khóa đối tác "${supplier.supplierName}"?`;
+    if (!window.confirm(message)) return;
+    toggleAdminSupplierStatus(supplier.supplierId);
+    refresh();
+  };
 
-  const activeCount = suppliers.filter((s) => s.status === 'ACTIVE').length;
-  const fiveStarCount = suppliers.filter((s) => s.rating === 5).length;
+  const handleSubmitForm = (values: AdminSupplierFormValues) => {
+    if (formModal?.mode === 'edit' && formModal.supplier) {
+      updateAdminSupplier(formModal.supplier.supplierId, values);
+    } else {
+      createAdminSupplier(values);
+    }
+    refresh();
+    setFormModal(null);
+  };
 
-  return (
-    <div className="p-6">
-      {/* ── Tab header ──────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+  const columns: TableColumn<AdminSupplier>[] = [
+    { key: 'supplierCode', label: 'ID', render: (s) => <span className="font-semibold text-slate-500">{s.supplierCode}</span> },
+    {
+      key: 'name',
+      label: 'Tên & SĐT Đối Tác',
+      render: (s) => (
+        <div>
+          <p className="font-bold text-slate-800">{s.supplierName}</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-sm text-slate-500">
+            <Phone className="h-3.5 w-3.5 text-slate-400" />
+            {s.phone}
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: 'address',
+      label: 'Địa Chỉ & Phân Loại',
+      render: (s) => (
+        <div>
+          <p className="flex items-center gap-1.5 text-sm text-slate-600">
+            <MapPin className="h-3.5 w-3.5 text-slate-400" />
+            {s.address}
+          </p>
+          <span className="mt-1.5 inline-flex rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-600">
+            {s.serviceType}
+          </span>
+        </div>
+      ),
+    },
+    {
+      key: 'debtBalance',
+      label: 'Dư Nợ Công Nợ',
+      render: (s) => <span className="font-bold text-red-500">{formatCurrency(s.debtBalance)}</span>,
+    },
+    {
+      key: 'status',
+      label: 'Trạng Thái',
+      render: (s) => (
+        <span className="inline-flex items-center gap-1.5 text-sm font-medium">
+          <span className={`h-2 w-2 rounded-full ${s.status === 'ACTIVE' ? 'bg-green-500' : 'bg-slate-400'}`} />
+          <span className={s.status === 'ACTIVE' ? 'text-green-600' : 'text-slate-500'}>
+            {s.status === 'ACTIVE' ? 'Đang hoạt động' : 'Ngừng hoạt động'}
+          </span>
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      label: 'Thao Tác',
+      render: (s) => (
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={() => setTab('suppliers')}
-            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
-              tab === 'suppliers' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'
-            }`}
+            aria-label="Xem chi tiết"
+            title="Xem chi tiết"
+            onClick={() => setDetailSupplier(s)}
+            className="inline-flex rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600"
           >
-            <Package className="h-4 w-4" />
-            Danh sách nhà cung cấp
+            <Eye className="h-4 w-4" />
           </button>
           <button
             type="button"
-            onClick={() => setTab('orders')}
-            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
-              tab === 'orders' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'
-            }`}
+            aria-label="Chỉnh sửa"
+            title="Chỉnh sửa"
+            onClick={() => setFormModal({ mode: 'edit', supplier: s })}
+            className="inline-flex rounded-md p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600"
           >
-            <Truck className="h-4 w-4" />
-            Đơn mua sắm / Thuê NCC
+            <Pencil className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            aria-label={s.status === 'ACTIVE' ? 'Khóa đối tác' : 'Mở khóa đối tác'}
+            title={s.status === 'ACTIVE' ? 'Khóa đối tác' : 'Mở khóa đối tác'}
+            onClick={() => handleToggleStatus(s)}
+            className={
+              s.status === 'ACTIVE'
+                ? 'inline-flex rounded-md p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600'
+                : 'inline-flex rounded-md p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600'
+            }
+          >
+            {s.status === 'ACTIVE' ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
           </button>
         </div>
+      ),
+    },
+  ];
 
-        {tab === 'suppliers' ? (
-          <Button onClick={() => setIsAddSupplierOpen(true)}>+ Thêm Nhà cung cấp</Button>
-        ) : (
-          <Button onClick={() => setIsCreateProcOpen(true)}>+ Khởi tạo đơn mua sắm</Button>
-        )}
+  return (
+    <div className="p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2.5 text-2xl font-bold text-slate-900">
+            <Truck className="h-6 w-6 text-blue-600" />
+            Danh sách Nhà cung cấp đối tác
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">Quản lý hồ sơ đối tác ngoài, phân loại thế mạnh và theo dõi công nợ, giao dịch lịch sử</p>
+        </div>
+        <Button onClick={() => setFormModal({ mode: 'create', supplier: null })}>
+          <Plus className="h-4 w-4" />
+          Thêm Đối Tác Mới
+        </Button>
       </div>
 
-      {/* ── Suppliers tab ───────────────────────────────────────────── */}
-      {tab === 'suppliers' && (
-        <motion.div key="suppliers" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}>
-          {/* KPI cards */}
-          <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            {[
-              { label: 'Đối tác liên kết', value: `${suppliers.length} NCC`, icon: Users, color: 'text-slate-700' },
-              { label: 'Đang hoạt động (Active)', value: `${activeCount} đối tác`, icon: Package, color: 'text-green-600' },
-              { label: 'Xếp hạng 5 sao', value: `${fiveStarCount} đối tác`, icon: Award, color: 'text-blue-600' },
-            ].map((kpi) => (
-              <div key={kpi.label} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{kpi.label}</p>
-                <p className={`mt-2 text-2xl font-bold ${kpi.color}`}>{kpi.value}</p>
-              </div>
-            ))}
+      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="min-w-[280px] flex-1">
+            <Input
+              placeholder="Tìm đối tác theo tên nhà cung cấp hoặc số điện thoại..."
+              icon={<Search className="h-4 w-4" />}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
-
-          {/* Search + filter */}
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <div className="relative min-w-0 flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={supplierSearch}
-                onChange={(e) => setSupplierSearch(e.target.value)}
-                placeholder="Tìm theo tên nhà cung cấp hoặc dịch vụ cung cấp..."
-                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div className="w-56">
-              <Select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} options={SERVICE_CATEGORIES} />
-            </div>
+          <div className="w-56">
+            <Select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              options={[
+                { value: '', label: 'Tất cả trạng thái' },
+                { value: 'ACTIVE', label: 'Đang hoạt động' },
+                { value: 'INACTIVE', label: 'Ngừng hoạt động' },
+              ]}
+            />
           </div>
+        </div>
 
-          {/* Table */}
-          <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="border-b border-slate-100">
-                  <tr>
-                    {['Mã đối tác', 'Tên nhà cung cấp', 'Dịch vụ cung ứng', 'Điện thoại liên hệ', 'Địa chỉ trụ sở', 'Đánh giá sao', 'Trạng thái', 'Thao tác'].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {isLoadingSuppliers ? (
-                    <tr><td colSpan={8} className="px-4 py-8 text-center text-sm italic text-slate-400">Đang tải...</td></tr>
-                  ) : filteredSuppliers.length === 0 ? (
-                    <tr><td colSpan={8} className="px-4 py-8 text-center text-sm italic text-slate-400">Không có nhà cung cấp nào.</td></tr>
-                  ) : filteredSuppliers.map((sup) => (
-                    <tr key={sup.supplierId} className="hover:bg-slate-50/60">
-                      <td className="px-4 py-3 font-mono text-sm font-bold text-blue-600">{sup.supplierCode}</td>
-                      <td className="px-4 py-3 font-semibold text-slate-800">{sup.supplierName}</td>
-                      <td className="px-4 py-3">
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                          {sup.serviceType || '—'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">{sup.phone}</td>
-                      <td className="max-w-[180px] px-4 py-3 truncate text-slate-400" title={sup.address}>
-                        {sup.address || '—'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <StarRating rating={sup.rating ?? 0} />
-                      </td>
-                      <td className="px-4 py-3">
-                        {sup.status === 'ACTIVE' ? (
-                          <Badge variant="success">Active</Badge>
-                        ) : (
-                          <Badge variant="neutral">Inactive</Badge>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <button type="button" className="rounded p-1 text-slate-400 hover:bg-blue-50 hover:text-blue-600" aria-label="Sửa">
-                            <Edit2 className="h-4 w-4" />
-                          </button>
-                          <button type="button" className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500" aria-label="Xóa">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </motion.div>
-      )}
+        <div className="mt-4 overflow-x-auto">
+          <Table columns={columns} rows={filtered} rowKey={(row) => row.supplierId} />
+        </div>
+      </div>
 
-      {/* ── Procurement orders tab ───────────────────────────────────── */}
-      {tab === 'orders' && (
-        <motion.div key="orders" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18 }}>
-          {/* Search */}
-          <div className="mt-5">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={orderSearch}
-                onChange={(e) => setOrderSearch(e.target.value)}
-                placeholder="Tìm đơn mua theo mã hợp đồng sự kiện, dịch vụ hoặc nhà cung cấp..."
-                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-
-          {/* Table */}
-          <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="border-b border-slate-100">
-                  <tr>
-                    {['Mã đơn mua', 'Mã sự kiện liên kết', 'Nhà cung cấp đối tác', 'Hạng mục mua sắm/Thuê ngoài', 'Chi phí ước tính', 'Chi đặt cọc NCC', 'Trạng thái mua hàng', 'Thao tác'].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {isLoadingOrders ? (
-                    <tr><td colSpan={8} className="px-4 py-8 text-center text-sm italic text-slate-400">Đang tải...</td></tr>
-                  ) : filteredTransactions.length === 0 ? (
-                    <tr><td colSpan={8} className="px-4 py-8 text-center text-sm italic text-slate-400">Không có đơn mua sắm nào.</td></tr>
-                  ) : filteredTransactions.map((tx) => {
-                    const { label, variant } = procStatusLabel(tx.status);
-                    return (
-                      <tr key={tx.transactionId} className="hover:bg-slate-50/60">
-                        <td className="px-4 py-3 font-mono text-sm font-bold text-blue-600">{tx.transactionCode}</td>
-                        <td className="px-4 py-3 font-semibold text-slate-700">{tx.orderId}</td>
-                        <td className="px-4 py-3 font-semibold text-slate-800">{tx.supplierName ?? tx.supplierId}</td>
-                        <td className="max-w-[220px] px-4 py-3 text-slate-600">{tx.serviceTitle}</td>
-                        <td className="px-4 py-3 font-semibold text-slate-800">{formatCurrency(tx.estimatedCost)}</td>
-                        <td className="px-4 py-3 font-semibold text-blue-600">{formatCurrency(tx.depositAmount)}</td>
-                        <td className="px-4 py-3">
-                          <Badge variant={variant}>{label}</Badge>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <button type="button" className="rounded p-1 text-slate-400 hover:bg-blue-50 hover:text-blue-600" aria-label="Sửa">
-                              <Edit2 className="h-4 w-4" />
-                            </button>
-                            <button type="button" className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500" aria-label="Xóa">
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      <AddSupplierModal
-        isOpen={isAddSupplierOpen}
-        onClose={() => setIsAddSupplierOpen(false)}
-        onSuccess={loadSuppliers}
+      <SupplierFormModal
+        isOpen={!!formModal}
+        mode={formModal?.mode ?? 'create'}
+        supplier={formModal?.supplier ?? null}
+        onClose={() => setFormModal(null)}
+        onSubmit={handleSubmitForm}
       />
-      <CreateProcurementModal
-        isOpen={isCreateProcOpen}
-        suppliers={suppliers}
-        orders={orders}
-        onClose={() => setIsCreateProcOpen(false)}
-        onSuccess={loadTransactions}
-      />
+
+      <SupplierDetailModal supplier={detailSupplier} onClose={() => setDetailSupplier(null)} />
     </div>
+  );
+}
+
+interface SupplierFormModalProps {
+  isOpen: boolean;
+  mode: 'create' | 'edit';
+  supplier: AdminSupplier | null;
+  onClose: () => void;
+  onSubmit: (values: AdminSupplierFormValues) => void;
+}
+
+function SupplierFormModal({ isOpen, mode, supplier, onClose, onSubmit }: Readonly<SupplierFormModalProps>) {
+  const [values, setValues] = useState<AdminSupplierFormValues>(EMPTY_FORM);
+  const [error, setError] = useState('');
+  const [wasOpen, setWasOpen] = useState(isOpen);
+
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
+    if (isOpen) {
+      setError('');
+      setValues(
+        mode === 'edit' && supplier
+          ? {
+              supplierCode: supplier.supplierCode,
+              supplierName: supplier.supplierName,
+              phone: supplier.phone,
+              address: supplier.address,
+              serviceType: supplier.serviceType,
+            }
+          : EMPTY_FORM,
+      );
+    }
+  }
+
+  const handleSubmit = () => {
+    if (!values.supplierCode.trim() || !values.supplierName.trim() || !values.serviceType.trim()) {
+      setError('Vui lòng nhập đủ mã, tên và phân loại đối tác');
+      return;
+    }
+    onSubmit(values);
+  };
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={mode === 'create' ? 'Thêm đối tác mới' : 'Chỉnh sửa đối tác'}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Hủy
+          </Button>
+          <Button onClick={handleSubmit}>{mode === 'create' ? 'Thêm đối tác' : 'Lưu thay đổi'}</Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Mã đối tác"
+            required
+            disabled={mode === 'edit'}
+            value={values.supplierCode}
+            onChange={(e) => setValues((v) => ({ ...v, supplierCode: e.target.value }))}
+            placeholder="VD: SUP_ABC"
+          />
+          <Input
+            label="Tên nhà cung cấp"
+            required
+            value={values.supplierName}
+            onChange={(e) => setValues((v) => ({ ...v, supplierName: e.target.value }))}
+            placeholder="VD: Ánh Sáng Pro"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Số điện thoại" value={values.phone} onChange={(e) => setValues((v) => ({ ...v, phone: e.target.value }))} placeholder="09xx xxx xxx" />
+          <Input
+            label="Phân loại"
+            required
+            value={values.serviceType}
+            onChange={(e) => setValues((v) => ({ ...v, serviceType: e.target.value }))}
+            placeholder="VD: Âm thanh biểu diễn"
+          />
+        </div>
+        <Input label="Địa chỉ" value={values.address} onChange={(e) => setValues((v) => ({ ...v, address: e.target.value }))} placeholder="Quận/huyện, tỉnh/thành" />
+        {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 ring-1 ring-inset ring-red-600/20">{error}</p>}
+      </div>
+    </Modal>
   );
 }

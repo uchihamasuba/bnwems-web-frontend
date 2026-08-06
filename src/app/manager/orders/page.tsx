@@ -1,282 +1,314 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Eye, ShoppingCart, Inbox, Settings2, CheckCircle2, Download, RefreshCw, Search } from 'lucide-react';
-import { orderApiService } from '@/services/order.service';
-import { customerApiService } from '@/services/customer.service';
-import { Table, TableColumn } from '@/components/ui/Table';
-import { Pagination } from '@/components/ui/Pagination';
-import { Select } from '@/components/ui/Select';
+import { motion } from 'framer-motion';
+import { Eye, Plus, Search, Trash2 } from 'lucide-react';
+import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Avatar } from '@/components/ui/Avatar';
-import DashboardStats, { KpiCardItem } from '@/components/reports/DashboardStats';
-import CreateOrderModal from '@/components/orders/CreateOrderModal';
-import OrderStatusBadge from '@/components/orders/OrderStatusBadge';
-import { usePagination } from '@/hooks/usePagination';
+import { Modal } from '@/components/ui/Modal';
+import { Pagination } from '@/components/ui/Pagination';
+import type { PaginationState } from '@/hooks/usePagination';
 import { useDebounce } from '@/hooks/useDebounce';
+import BookingFormModal from '@/components/bookings/BookingFormModal';
+import { formatCurrency } from '@/utils/formatCurrency';
 import { formatDate } from '@/utils/formatDate';
-import { ORDER_STATUS_LABEL } from '@/constants/order-status';
-import type { Order } from '@/types/order';
-import type { Customer } from '@/types/customer';
+import {
+  AdminOrderRow,
+  BOOKING_STATUS_META,
+  BookingStatus,
+  COORDINATOR_POOL,
+  PAYMENT_STATUS_META,
+  PaymentStatus,
+  addAdminOrder,
+  buildOrderItems,
+  deleteAdminOrder,
+  getAdminOrders,
+  nextAdminOrderId,
+} from '@/mocks/adminOrdersMock';
 
-const STATUS_OPTIONS = Object.entries(ORDER_STATUS_LABEL).map(([value, label]) => ({ value, label }));
+// Trang thuần giao diện — mirror 1:1 từ src/app/admin/orders_audit/page.tsx cho vai trò Manager, chỉ
+// đổi tiền tố đường dẫn /admin/orders_audit -> /manager/orders. Toàn bộ mock data/CRUD dùng chung với
+// Admin qua @/mocks/adminOrdersMock — xem giải thích ở đầu file mock đó.
 
-interface OrderCounts {
-  total: number;
-  newCount: number;
-  inProgress: number;
-  completed: number;
-}
+export default function ManagerOrdersPage() {
+  const [orders, setOrders] = useState<AdminOrderRow[]>(() => getAdminOrders());
+  const [searchInput, setSearchInput] = useState('');
+  const search = useDebounce(searchInput, 300);
+  const [statusFilter, setStatusFilter] = useState<BookingStatus | 'ALL'>('ALL');
+  const [payFilter, setPayFilter] = useState<PaymentStatus | 'ALL'>('ALL');
+  const [coordinatorFilter, setCoordinatorFilter] = useState('ALL');
+  const [page, setPage] = useState(1);
+  const limit = 10;
 
-export default function Page() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [counts, setCounts] = useState<OrderCounts | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [deletingOrder, setDeletingOrder] = useState<AdminOrderRow | null>(null);
 
-  const [statusFilter, setStatusFilter] = useState('');
-  const [searchValue, setSearchValue] = useState('');
-  const debouncedSearch = useDebounce(searchValue, 400);
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  const { pagination, setPage, updatePagination } = usePagination(10);
-
-  // Danh sách khách hàng để ghép tên/phone vào bảng — GET /orders chỉ trả customerId,
-  // không có endpoint lấy nhiều customer theo id nên lấy 1 trang lớn rồi map ở client.
-  useEffect(() => {
-    customerApiService.getCustomers({ limit: 100 }).then((res) => setCustomers(res.data));
-  }, []);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setIsLoading(true);
-    orderApiService
-      .getOrders({
-        page: pagination.currentPage,
-        limit: pagination.limit,
-        orderStatus: statusFilter || undefined,
-        search: debouncedSearch || undefined,
-      })
-      .then((res) => {
-        setOrders(res.data);
-        updatePagination({
-          totalItems: res.meta.totalCount,
-          totalPages: Math.max(1, Math.ceil(res.meta.totalCount / res.meta.limit)),
-        });
-      })
-      .finally(() => setIsLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pagination.currentPage, pagination.limit, statusFilter, debouncedSearch, refreshKey]);
-
-  // KPI — đếm riêng theo status, không phụ thuộc bộ lọc bảng
-  useEffect(() => {
-    Promise.all([
-      orderApiService.getOrders({ limit: 1 }),
-      orderApiService.getOrders({ limit: 1, orderStatus: 'NEW' }),
-      orderApiService.getOrders({ limit: 1, orderStatus: 'IN_PROGRESS' }),
-      orderApiService.getOrders({ limit: 1, orderStatus: 'COMPLETED' }),
-    ]).then(([all, newCount, inProgress, completed]) => {
-      setCounts({
-        total: all.meta.totalCount,
-        newCount: newCount.meta.totalCount,
-        inProgress: inProgress.meta.totalCount,
-        completed: completed.meta.totalCount,
-      });
-    });
-  }, []);
-
-  const customerById = useMemo(() => new Map(customers.map((c) => [c.customerId, c])), [customers]);
-
-  const kpiItems: KpiCardItem[] = [
-    { label: 'Tổng đơn hàng', value: counts?.total ?? '—', icon: ShoppingCart, iconColor: 'blue' },
-    { label: 'Đơn mới', value: counts?.newCount ?? '—', icon: Inbox, iconColor: 'blue' },
-    { label: 'Đang thực hiện', value: counts?.inProgress ?? '—', icon: Settings2, iconColor: 'amber' },
-    { label: 'Đã hoàn thành', value: counts?.completed ?? '—', icon: CheckCircle2, iconColor: 'green' },
-  ];
-
-  const handleRefresh = () => {
-    setRefreshKey((k) => k + 1);
-    setPage(1);
+  const kpis = {
+    total: orders.length,
+    NEW: orders.filter((o) => o.status === 'NEW').length,
+    CONFIRMED: orders.filter((o) => o.status === 'CONFIRMED').length,
+    IN_PROGRESS: orders.filter((o) => o.status === 'IN_PROGRESS').length,
+    COMPLETED: orders.filter((o) => o.status === 'COMPLETED').length,
+    CANCELLED: orders.filter((o) => o.status === 'CANCELLED').length,
   };
 
-  const handleExportCsv = () => {
-    const header = ['Mã đơn hàng', 'Khách hàng', 'SĐT', 'Loại sự kiện', 'Ngày tổ chức', 'Địa chỉ', 'Trạng thái', 'Ngày tạo'];
-    const rows = orders.map((o) => {
-      const customer = customerById.get(o.customerId);
-      return [
-        o.orderCode,
-        customer?.customerName ?? `KH #${o.customerId}`,
-        customer?.phone ?? '',
-        o.eventType,
-        formatDate(o.eventDate),
-        o.location,
-        ORDER_STATUS_LABEL[o.orderStatus] ?? o.orderStatus,
-        formatDate(o.createdAt),
-      ];
+  const filteredOrders = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return orders.filter((o) => {
+      if (statusFilter !== 'ALL' && o.status !== statusFilter) return false;
+      if (payFilter !== 'ALL' && o.paymentStatus !== payFilter) return false;
+      if (coordinatorFilter !== 'ALL' && o.coordinatorName !== coordinatorFilter) return false;
+      if (!term) return true;
+      return (
+        o.orderId.toLowerCase().includes(term) ||
+        o.customerName.toLowerCase().includes(term) ||
+        o.customerPhone.includes(term) ||
+        o.venue.toLowerCase().includes(term)
+      );
     });
-    const csv = [header, ...rows]
-      .map((r) => r.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(','))
-      .join('\n');
-    const blob = new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `don-hang-trang-${pagination.currentPage}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+  }, [orders, search, statusFilter, payFilter, coordinatorFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / limit));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = filteredOrders.slice((safePage - 1) * limit, safePage * limit);
+  const paginationState: PaginationState = { currentPage: safePage, totalPages, totalItems: filteredOrders.length, limit };
+
+  const handleResetFilters = () => {
+    setSearchInput('');
+    setStatusFilter('ALL');
+    setPayFilter('ALL');
+    setCoordinatorFilter('ALL');
   };
 
-  const columns: TableColumn<Order>[] = [
-    {
-      key: 'orderCode',
-      label: 'Mã đơn hàng',
-      render: (row) => (
-        <Link href={`/manager/orders/${row.orderId}`} className="font-mono text-sm font-medium text-blue-600 hover:underline">
-          {row.orderCode}
-        </Link>
-      ),
-    },
-    {
-      key: 'customerId',
-      label: 'Khách hàng',
-      render: (row) => {
-        const customer = customerById.get(row.customerId);
-        return (
-          <div className="flex items-center gap-2.5">
-            <Avatar name={customer?.customerName ?? String(row.customerId)} size="sm" />
-            <div className="min-w-0">
-              <p className="truncate font-medium text-slate-700">{customer?.customerName ?? `KH #${row.customerId}`}</p>
-              {customer?.phone && <p className="truncate text-xs text-slate-400">{customer.phone}</p>}
-            </div>
-          </div>
-        );
-      },
-    },
-    {
-      key: 'eventType',
-      label: 'Loại sự kiện',
-      render: (row) => <span className="text-sm font-medium text-indigo-600">{row.eventType}</span>,
-    },
-    {
-      key: 'eventDate',
-      label: 'Ngày tổ chức',
-      render: (row) => <span className="whitespace-nowrap text-sm">{formatDate(row.eventDate)}</span>,
-    },
-    {
-      key: 'location',
-      label: 'Địa chỉ',
-      render: (row) => (
-        <span className="max-w-[180px] truncate text-sm text-slate-600" title={row.location}>
-          {row.location}
-        </span>
-      ),
-    },
-    {
-      key: 'orderStatus',
-      label: 'Trạng thái',
-      className: 'whitespace-nowrap',
-      render: (row) => <OrderStatusBadge status={row.orderStatus} />,
-    },
-    {
-      key: 'createdAt',
-      label: 'Ngày tạo',
-      render: (row) => <span className="whitespace-nowrap text-sm text-slate-500">{formatDate(row.createdAt)}</span>,
-    },
-    {
-      key: 'actions',
-      label: 'Thao tác',
-      render: (row) => (
-        <Link
-          href={`/manager/orders/${row.orderId}`}
-          aria-label="Xem chi tiết"
-          title="Xem chi tiết"
-          className="inline-flex rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600"
-        >
-          <Eye className="h-4 w-4" />
-        </Link>
-      ),
-    },
+  const handleCreate = (values: Omit<AdminOrderRow, 'orderId' | 'checklist' | 'status' | 'paymentStatus' | 'items' | 'liveChecklist' | 'disputeLogs'>) => {
+    const orderId = nextAdminOrderId();
+    addAdminOrder({
+      orderId,
+      status: 'NEW',
+      paymentStatus: 'UNPAID',
+      checklist: [],
+      items: buildOrderItems(orderId, values.totalPrice, values.venue, 'NEW'),
+      liveChecklist: {},
+      disputeLogs: [],
+      ...values,
+    });
+    setOrders(getAdminOrders());
+    setIsFormOpen(false);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (!deletingOrder) return;
+    deleteAdminOrder(deletingOrder.orderId);
+    setOrders((prev) => prev.filter((o) => o.orderId !== deletingOrder.orderId));
+    setDeletingOrder(null);
+  };
+
+  const kpiCards: { label: string; value: number; className: string }[] = [
+    { label: 'Tổng đơn', value: kpis.total, className: 'bg-white text-slate-900' },
+    { label: 'Mới', value: kpis.NEW, className: 'bg-slate-50 text-slate-600' },
+    { label: 'Đã xác nhận', value: kpis.CONFIRMED, className: 'bg-blue-50/50 text-blue-700' },
+    { label: 'Đang chuẩn bị', value: kpis.IN_PROGRESS, className: 'bg-indigo-50/50 text-indigo-700' },
+    { label: 'Hoàn thành', value: kpis.COMPLETED, className: 'bg-green-50/50 text-green-700' },
+    { label: 'Đã hủy', value: kpis.CANCELLED, className: 'bg-red-50/50 text-red-700' },
   ];
 
   return (
     <div className="p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Quản lý đơn hàng</h1>
-          <p className="mt-1 text-sm text-slate-500">Theo dõi và điều phối tất cả các đơn hàng sự kiện trong hệ thống.</p>
+          <h1 className="text-2xl font-bold text-slate-900">Quản lý đơn đặt hàng</h1>
+          <p className="mt-1 text-sm text-slate-500">Giám sát trạng thái đơn hàng sự kiện, kiểm soát thanh toán và điều phối kho.</p>
         </div>
-        <Button onClick={() => setIsCreateOpen(true)}>
+        <Button onClick={() => setIsFormOpen(true)}>
           <Plus className="h-4 w-4" />
-          Tạo đơn hàng mới
+          Khởi tạo đơn đặt hàng
         </Button>
       </div>
 
-      {/* KPI */}
-      <div className="mt-6">
-        <DashboardStats items={kpiItems} />
+      <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-6">
+        {kpiCards.map((kpi, idx) => (
+          <motion.div
+            key={kpi.label}
+            initial={{ opacity: 0, y: 12 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-40px' }}
+            transition={{ duration: 0.2, delay: idx * 0.03 }}
+            className={`rounded-xl border border-slate-200/80 p-3.5 shadow-2xs ${kpi.className}`}
+          >
+            <p className="text-[9px] font-bold uppercase tracking-wider opacity-80">{kpi.label}</p>
+            <p className="mt-1 text-base font-black">{kpi.value}</p>
+          </motion.div>
+        ))}
       </div>
 
-      {/* Filter bar */}
-      <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="relative w-56">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-40px' }}
+        transition={{ duration: 0.25 }}
+        className="mt-6 flex flex-col items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-4 shadow-xs md:flex-row"
+      >
+        <div className="flex w-full flex-wrap gap-2.5 md:w-auto">
+          <div className="relative w-full sm:w-56">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              value={searchValue}
-              onChange={(e) => {
-                setSearchValue(e.target.value);
-                setPage(1);
-              }}
-              placeholder="Tìm theo mã đơn hàng, tên sự kiện..."
-              className="w-full rounded-md border border-slate-200 bg-white py-2 pl-8 pr-3 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Mã đơn, sự kiện, khách hàng, SĐT..."
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-
-          <div className="w-48">
-            <Select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setPage(1);
-              }}
-              options={[{ value: '', label: 'Tất cả trạng thái' }, ...STATUS_OPTIONS]}
-            />
-          </div>
-
-          <div className="ml-auto flex items-center gap-2">
-            <Button variant="secondary" onClick={handleRefresh} title="Tải lại dữ liệu">
-              <RefreshCw className="h-4 w-4" />
-              Làm mới
-            </Button>
-            <Button variant="secondary" onClick={handleExportCsv} disabled={orders.length === 0}>
-              <Download className="h-4 w-4" />
-              Xuất file
-            </Button>
-          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as BookingStatus | 'ALL')}
+            className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-xs text-slate-700 focus:border-blue-500 focus:outline-none"
+          >
+            <option value="ALL">Tất cả trạng thái</option>
+            {(Object.keys(BOOKING_STATUS_META) as BookingStatus[]).map((s) => (
+              <option key={s} value={s}>
+                {BOOKING_STATUS_META[s].label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={payFilter}
+            onChange={(e) => setPayFilter(e.target.value as PaymentStatus | 'ALL')}
+            className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-xs text-slate-700 focus:border-blue-500 focus:outline-none"
+          >
+            <option value="ALL">Tất cả thanh toán</option>
+            {(Object.keys(PAYMENT_STATUS_META) as PaymentStatus[]).map((p) => (
+              <option key={p} value={p}>
+                {PAYMENT_STATUS_META[p].label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={coordinatorFilter}
+            onChange={(e) => setCoordinatorFilter(e.target.value)}
+            className="max-w-[160px] rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-xs text-slate-700 focus:border-blue-500 focus:outline-none"
+          >
+            <option value="ALL">Mọi điều phối viên</option>
+            {COORDINATOR_POOL.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
         </div>
-      </div>
 
-      {/* Table card */}
-      <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
+        <button
+          type="button"
+          onClick={handleResetFilters}
+          className="shrink-0 text-xs font-semibold text-slate-500 transition hover:text-slate-800"
+        >
+          Đặt lại
+        </button>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-40px' }}
+        transition={{ duration: 0.25, delay: 0.05 }}
+        className="mt-6 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xs"
+      >
         <div className="overflow-x-auto">
-          <Table columns={columns} rows={orders} rowKey={(row) => row.orderId} isLoading={isLoading} />
+          <table className="w-full border-collapse text-left text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                <th className="px-5 py-3">Mã đơn</th>
+                <th className="px-5 py-3">Sự kiện / Khách hàng</th>
+                <th className="px-5 py-3">Ngày tổ chức</th>
+                <th className="px-5 py-3">Địa điểm</th>
+                <th className="px-5 py-3 text-center">Khách mời</th>
+                <th className="px-5 py-3 text-right">Trị giá</th>
+                <th className="px-5 py-3 text-center">Thanh toán</th>
+                <th className="px-5 py-3 text-center">Đơn hàng</th>
+                <th className="px-5 py-3 text-right">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {pageRows.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-10 text-center italic text-slate-400">
+                    Chưa có đơn đặt hàng nào khớp với tìm kiếm.
+                  </td>
+                </tr>
+              ) : (
+                pageRows.map((o) => (
+                  <tr key={o.orderId} className="text-xs transition-all hover:bg-slate-50/50">
+                    <td className="px-5 py-3 font-mono font-bold text-blue-600">
+                      <Link href={`/manager/orders/${o.orderId}`} className="hover:underline">
+                        {o.orderId}
+                      </Link>
+                    </td>
+                    <td className="px-5 py-3">
+                      <p className="max-w-[200px] truncate font-semibold text-slate-950">{o.packageType}</p>
+                      <p className="mt-0.5 text-[10px] font-medium text-slate-400">{o.customerName}</p>
+                    </td>
+                    <td className="px-5 py-3 font-medium text-slate-700">{formatDate(o.weddingDate)}</td>
+                    <td className="max-w-[150px] truncate px-5 py-3 text-slate-600">{o.venue}</td>
+                    <td className="px-5 py-3 text-center font-bold text-slate-700">{o.guestCount}</td>
+                    <td className="px-5 py-3 text-right font-black text-slate-900">{formatCurrency(o.totalPrice)}</td>
+                    <td className="px-5 py-3 text-center">
+                      <Badge variant={PAYMENT_STATUS_META[o.paymentStatus].variant}>{PAYMENT_STATUS_META[o.paymentStatus].label}</Badge>
+                    </td>
+                    <td className="px-5 py-3 text-center">
+                      <Badge variant={BOOKING_STATUS_META[o.status].variant}>{BOOKING_STATUS_META[o.status].label}</Badge>
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Link
+                          href={`/manager/orders/${o.orderId}`}
+                          aria-label="Xem chi tiết"
+                          title="Xem chi tiết"
+                          className="inline-flex rounded-md p-1.5 text-blue-600 hover:bg-blue-50"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => setDeletingOrder(o)}
+                          aria-label="Xóa đơn đặt"
+                          title="Xóa đơn đặt"
+                          className="inline-flex rounded-md p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
-        <Pagination pagination={pagination} onPageChange={setPage} />
-      </div>
 
-      <CreateOrderModal
-        isOpen={isCreateOpen}
-        customers={customers}
-        onClose={() => setIsCreateOpen(false)}
-        onCreated={() => {
-          setIsCreateOpen(false);
-          handleRefresh();
-        }}
-      />
+        <Pagination pagination={paginationState} onPageChange={setPage} />
+      </motion.div>
+
+      <BookingFormModal isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} coordinatorOptions={COORDINATOR_POOL} onSubmit={handleCreate} />
+
+      <Modal
+        isOpen={Boolean(deletingOrder)}
+        onClose={() => setDeletingOrder(null)}
+        title="Xóa đơn đặt"
+        subtitle={deletingOrder ? `Bạn có chắc muốn xóa đơn "${deletingOrder.orderId}"? Hành động này không thể hoàn tác.` : undefined}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeletingOrder(null)}>
+              Hủy
+            </Button>
+            <Button variant="danger" onClick={handleDeleteConfirm}>
+              Xóa đơn đặt
+            </Button>
+          </>
+        }
+      >
+        <div />
+      </Modal>
     </div>
   );
 }
