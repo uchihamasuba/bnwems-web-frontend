@@ -1,214 +1,184 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Search, Eye, Pencil, KeyRound, Ban, CheckCircle2, Plus } from 'lucide-react';
-import { userApiService } from '@/services/user.service';
+import { useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
+import { Mail, Pencil, Phone, Plus, Search, Trash2 } from 'lucide-react';
 import { Table, TableColumn } from '@/components/ui/Table';
-import { Pagination } from '@/components/ui/Pagination';
-import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
-import { Badge, getStatusBadgeVariant } from '@/components/ui/Badge';
-import { Avatar } from '@/components/ui/Avatar';
-import { UserFormModal, UserFormValues } from '@/components/users/UserFormModal';
-import { ResetPasswordModal } from '@/components/users/ResetPasswordModal';
-import { UserDetailModal } from '@/components/users/UserDetailModal';
-import { usePagination } from '@/hooks/usePagination';
+import { Badge } from '@/components/ui/Badge';
+import { Modal } from '@/components/ui/Modal';
+import { Pagination } from '@/components/ui/Pagination';
+import type { PaginationState } from '@/hooks/usePagination';
 import { useDebounce } from '@/hooks/useDebounce';
-import { usePermission } from '@/hooks/usePermission';
-import { formatDate } from '@/utils/formatDate';
-import { USER_ROLE_OPTIONS } from '@/constants/roles';
-import type { AdminUser } from '@/types/user';
+import EmployeeFormModal, { randomAvatarColor } from '@/components/employees/EmployeeFormModal';
+import {
+  AdminEmployee,
+  EMPLOYEE_ROLES,
+  EMPLOYEE_ROLE_BADGE,
+  EMPLOYEE_STATUS_META,
+  EmployeeRole,
+  addAdminEmployee,
+  deleteAdminEmployee,
+  getAdminEmployees,
+  nextAdminEmployeeId,
+  updateAdminEmployee,
+} from '@/mocks/adminEmployeesMock';
 
-const STATUS_LABEL: Record<string, string> = {
-  ACTIVE: 'Đang hoạt động',
-  INACTIVE: 'Đã vô hiệu hóa',
-  SUSPENDED: 'Tạm khóa',
-};
+// Trang thuần giao diện — xem giải thích ở đầu src/mocks/adminEmployeesMock.ts (trang này thay
+// thế trang quản lý tài khoản/RBAC thật theo quyết định của người dùng).
 
-const STATUS_OPTIONS = [
-  { value: 'ACTIVE', label: 'Đang hoạt động' },
-  { value: 'INACTIVE', label: 'Đã vô hiệu hóa' },
-  { value: 'SUSPENDED', label: 'Tạm khóa' },
-];
+export default function AdminEmployeesPage() {
+  const [employees, setEmployees] = useState<AdminEmployee[]>(() => getAdminEmployees());
+  const [searchInput, setSearchInput] = useState('');
+  const search = useDebounce(searchInput, 300);
+  const [roleTab, setRoleTab] = useState<EmployeeRole | 'all'>('all');
+  const [page, setPage] = useState(1);
+  const limit = 10;
 
-export default function Page() {
-  const { can } = usePermission();
-  const canManage = can('master-data:manage');
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState<AdminEmployee | null>(null);
+  const [deletingEmployee, setDeletingEmployee] = useState<AdminEmployee | null>(null);
 
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const roleTabs: { value: EmployeeRole | 'all'; label: string; count: number }[] = [
+    { value: 'all', label: 'Tất cả', count: employees.length },
+    ...EMPLOYEE_ROLES.map((role) => ({ value: role, label: role, count: employees.filter((e) => e.role === role).length })),
+  ];
 
-  const [search, setSearch] = useState('');
-  const debouncedSearch = useDebounce(search, 400);
-  const [roleFilter, setRoleFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const filteredEmployees = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return employees.filter((e) => {
+      if (roleTab !== 'all' && e.role !== roleTab) return false;
+      if (!term) return true;
+      return (
+        e.name.toLowerCase().includes(term) ||
+        e.id.toLowerCase().includes(term) ||
+        e.phone.includes(term) ||
+        e.email.toLowerCase().includes(term) ||
+        e.role.toLowerCase().includes(term)
+      );
+    });
+  }, [employees, search, roleTab]);
 
-  const { pagination, setPage, updatePagination } = usePagination(10);
+  const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / limit));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = filteredEmployees.slice((safePage - 1) * limit, safePage * limit);
+  const paginationState: PaginationState = { currentPage: safePage, totalPages, totalItems: filteredEmployees.length, limit };
 
-  const [formModal, setFormModal] = useState<{ mode: 'create' | 'edit'; user: AdminUser | null } | null>(null);
-  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
-  const [formError, setFormError] = useState('');
-
-  const [resetPasswordUser, setResetPasswordUser] = useState<AdminUser | null>(null);
-  const [isResettingPassword, setIsResettingPassword] = useState(false);
-  const [resetPasswordError, setResetPasswordError] = useState('');
-
-  const [detailUser, setDetailUser] = useState<AdminUser | null>(null);
-  const [refreshToken, setRefreshToken] = useState(0);
-  const refetchUsers = () => setRefreshToken((t) => t + 1);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag toggled before/after the fetch below, not a render loop
-    setIsLoading(true);
-    userApiService
-      .getUsers({
-        page: pagination.currentPage,
-        limit: pagination.limit,
-        search: debouncedSearch || undefined,
-        role: roleFilter || undefined,
-        status: statusFilter || undefined,
-      })
-      .then((res) => {
-        setUsers(res.data);
-        updatePagination({ totalItems: res.meta.totalCount, totalPages: Math.max(1, Math.ceil(res.meta.totalCount / res.meta.limit)) });
-      })
-      .finally(() => setIsLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pagination.currentPage, pagination.limit, debouncedSearch, roleFilter, statusFilter, refreshToken]);
-
-  const handleCreateSubmit = async (values: UserFormValues) => {
-    setIsSubmittingForm(true);
-    setFormError('');
-    try {
-      await userApiService.createUser(values);
-      setFormModal(null);
-      refetchUsers();
-    } catch (err) {
-      setFormError(getErrorMessage(err, 'Tạo người dùng thất bại'));
-    } finally {
-      setIsSubmittingForm(false);
-    }
+  const openCreateModal = () => {
+    setEditingEmployee(null);
+    setIsFormOpen(true);
   };
 
-  const handleEditSubmit = async (values: UserFormValues, user: AdminUser) => {
-    setIsSubmittingForm(true);
-    setFormError('');
-    try {
-      await userApiService.updateUser(user.userId, { fullName: values.fullName, role: values.role });
-      setFormModal(null);
-      refetchUsers();
-    } catch (err) {
-      setFormError(getErrorMessage(err, 'Cập nhật người dùng thất bại'));
-    } finally {
-      setIsSubmittingForm(false);
-    }
+  const openEditModal = (employee: AdminEmployee) => {
+    setEditingEmployee(employee);
+    setIsFormOpen(true);
   };
 
-  const handleToggleStatus = async (user: AdminUser) => {
-    const nextStatus = user.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-    const confirmMessage =
-      nextStatus === 'INACTIVE'
-        ? `Vô hiệu hóa tài khoản "${user.fullName}"?`
-        : `Kích hoạt lại tài khoản "${user.fullName}"?`;
-    if (!window.confirm(confirmMessage)) return;
-
-    try {
-      await userApiService.updateUserStatus(user.userId, { status: nextStatus });
-      refetchUsers();
-    } catch (err) {
-      window.alert(getErrorMessage(err, 'Cập nhật trạng thái thất bại'));
+  const handleSubmit = (values: Omit<AdminEmployee, 'id' | 'avatarColor' | 'assignedBookings'>) => {
+    if (editingEmployee) {
+      updateAdminEmployee(editingEmployee.id, values);
+    } else {
+      addAdminEmployee({ id: nextAdminEmployeeId(), avatarColor: randomAvatarColor(), assignedBookings: 0, ...values });
     }
+    setEmployees(getAdminEmployees());
+    setIsFormOpen(false);
+    setEditingEmployee(null);
   };
 
-  const handleResetPassword = async (newPassword: string) => {
-    if (!resetPasswordUser) return;
-    setIsResettingPassword(true);
-    setResetPasswordError('');
-    try {
-      await userApiService.resetPassword(resetPasswordUser.userId, { newPassword });
-      setResetPasswordUser(null);
-    } catch (err) {
-      setResetPasswordError(getErrorMessage(err, 'Đặt lại mật khẩu thất bại'));
-    } finally {
-      setIsResettingPassword(false);
-    }
+  const handleDeleteConfirm = () => {
+    if (!deletingEmployee) return;
+    deleteAdminEmployee(deletingEmployee.id);
+    setEmployees((prev) => prev.filter((e) => e.id !== deletingEmployee.id));
+    setDeletingEmployee(null);
   };
 
-  const columns: TableColumn<AdminUser>[] = [
+  const columns: TableColumn<AdminEmployee>[] = [
     {
-      key: 'fullName',
+      key: 'id',
+      label: 'Mã NV',
+      render: (row) => <span className="font-mono text-xs font-semibold text-slate-500">{row.id}</span>,
+    },
+    {
+      key: 'name',
       label: 'Họ và tên',
       render: (row) => (
-        <div className="flex items-center gap-3">
-          <Avatar name={row.fullName} />
-          <div>
-            <p className="font-medium text-slate-800">{row.fullName}</p>
-            <p className="text-xs text-slate-400">{row.username}</p>
+        <div className="flex items-center gap-2.5">
+          <span className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white ${row.avatarColor}`}>
+            {row.name
+              .split(' ')
+              .slice(-2)
+              .map((p) => p[0])
+              .join('')
+              .toUpperCase()}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate font-medium text-slate-800">{row.name}</p>
+            <p className="truncate text-xs text-slate-400">ID: {row.id}</p>
           </div>
         </div>
       ),
     },
     {
       key: 'role',
-      label: 'Vai trò',
-      render: (row) => <Badge variant="neutral">{USER_ROLE_OPTIONS.find((r) => r.value === row.role)?.label ?? row.role}</Badge>,
+      label: 'Vai trò / Bộ phận',
+      render: (row) => <Badge variant={EMPLOYEE_ROLE_BADGE[row.role]}>{row.role}</Badge>,
+    },
+    {
+      key: 'contact',
+      label: 'Thông tin liên hệ',
+      render: (row) => (
+        <div className="text-xs text-slate-500">
+          <p className="flex items-center gap-1.5">
+            <Phone className="h-3 w-3" /> {row.phone}
+          </p>
+          {row.email && (
+            <p className="mt-0.5 flex items-center gap-1.5">
+              <Mail className="h-3 w-3" /> {row.email}
+            </p>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'assignedBookings',
+      label: 'Sự kiện phụ trách',
+      className: 'text-center',
+      render: (row) => <span className="font-semibold text-slate-800">{row.assignedBookings}</span>,
     },
     {
       key: 'status',
       label: 'Trạng thái',
-      render: (row) => <Badge variant={getStatusBadgeVariant(row.status)}>{STATUS_LABEL[row.status] ?? row.status}</Badge>,
-    },
-    {
-      key: 'createdAt',
-      label: 'Ngày tạo',
-      render: (row) => formatDate(row.createdAt),
+      className: 'text-center',
+      render: (row) => (
+        <span className="inline-flex items-center gap-1.5">
+          <span className={`h-1.5 w-1.5 rounded-full ${row.status === 'active' ? 'bg-green-500' : 'bg-slate-300'}`} />
+          <Badge variant={EMPLOYEE_STATUS_META[row.status].variant}>{EMPLOYEE_STATUS_META[row.status].label}</Badge>
+        </span>
+      ),
     },
     {
       key: 'actions',
       label: 'Thao tác',
       render: (row) => (
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           <button
             type="button"
-            aria-label="Xem chi tiết"
-            title="Xem chi tiết"
-            onClick={() => setDetailUser(row)}
-            className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            onClick={() => openEditModal(row)}
+            aria-label="Sửa nhân sự"
+            title="Sửa nhân sự"
+            className="inline-flex rounded-md p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600"
           >
-            <Eye className="h-4 w-4" />
+            <Pencil className="h-4 w-4" />
           </button>
-          {canManage && (
-            <>
-              <button
-                type="button"
-                aria-label="Chỉnh sửa"
-                title="Chỉnh sửa"
-                onClick={() => setFormModal({ mode: 'edit', user: row })}
-                className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600"
-              >
-                <Pencil className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                aria-label="Đặt lại mật khẩu"
-                title="Đặt lại mật khẩu"
-                onClick={() => setResetPasswordUser(row)}
-                className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-amber-600"
-              >
-                <KeyRound className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                aria-label={row.status === 'ACTIVE' ? 'Vô hiệu hóa' : 'Kích hoạt'}
-                title={row.status === 'ACTIVE' ? 'Vô hiệu hóa' : 'Kích hoạt'}
-                onClick={() => handleToggleStatus(row)}
-                className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-red-600"
-              >
-                {row.status === 'ACTIVE' ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-              </button>
-            </>
-          )}
+          <button
+            type="button"
+            onClick={() => setDeletingEmployee(row)}
+            aria-label="Xóa nhân sự"
+            title="Xóa nhân sự"
+            className="inline-flex rounded-md p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
         </div>
       ),
     },
@@ -216,100 +186,86 @@ export default function Page() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Quản lý người dùng</h1>
-          <p className="mt-1 text-sm text-slate-500">Tạo, cập nhật và quản lý trạng thái tài khoản nhân sự.</p>
+          <h1 className="text-2xl font-bold text-slate-900">Nhân viên</h1>
+          <p className="mt-1 text-sm text-slate-500">Quản lý nhân sự vận hành sự kiện và phân công phụ trách.</p>
         </div>
-        {canManage && (
-          <Button onClick={() => setFormModal({ mode: 'create', user: null })}>
-            <Plus className="h-4 w-4" />
-            Tạo người dùng
-          </Button>
-        )}
+        <Button onClick={openCreateModal}>
+          <Plus className="h-4 w-4" />
+          Thêm nhân sự
+        </Button>
       </div>
 
-      <div className="mt-6 rounded-xl bg-white p-4 shadow-sm">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="w-64">
-            <Input
-              placeholder="Tìm theo tên đăng nhập hoặc họ tên..."
-              icon={<Search className="h-4 w-4" />}
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
-            />
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-40px' }}
+        transition={{ duration: 0.25 }}
+        className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-xs"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-1.5">
+            {roleTabs.map((tab) => (
+              <button
+                key={tab.value}
+                type="button"
+                onClick={() => setRoleTab(tab.value)}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  roleTab === tab.value ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {tab.label} ({tab.count})
+              </button>
+            ))}
           </div>
-          <div className="w-48">
-            <Select
-              value={roleFilter}
-              onChange={(e) => {
-                setRoleFilter(e.target.value);
-                setPage(1);
-              }}
-              options={[{ value: '', label: 'Tất cả vai trò' }, ...USER_ROLE_OPTIONS]}
-            />
-          </div>
-          <div className="w-48">
-            <Select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setPage(1);
-              }}
-              options={[{ value: '', label: 'Tất cả trạng thái' }, ...STATUS_OPTIONS]}
+          <div className="relative w-64">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Tìm theo tên, SĐT, email, vai trò..."
+              className="w-full rounded-md border border-slate-200 bg-white py-2 pl-8 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         </div>
 
-        <div className="mt-4">
-          <Table columns={columns} rows={users} rowKey={(row) => row.userId} isLoading={isLoading} />
+        <div className="mt-4 overflow-x-auto">
+          <Table columns={columns} rows={pageRows} rowKey={(row) => row.id} />
         </div>
-        <Pagination pagination={pagination} onPageChange={setPage} />
-      </div>
 
-      <UserFormModal
-        isOpen={!!formModal}
-        mode={formModal?.mode ?? 'create'}
-        user={formModal?.user}
-        isSubmitting={isSubmittingForm}
-        errorMessage={formError}
+        <Pagination pagination={paginationState} onPageChange={setPage} />
+      </motion.div>
+
+      <EmployeeFormModal
+        isOpen={isFormOpen}
+        editingEmployee={editingEmployee}
         onClose={() => {
-          setFormModal(null);
-          setFormError('');
+          setIsFormOpen(false);
+          setEditingEmployee(null);
         }}
-        onSubmit={(values) => {
-          if (formModal?.mode === 'edit' && formModal.user) {
-            handleEditSubmit(values, formModal.user);
-          } else {
-            handleCreateSubmit(values);
-          }
-        }}
+        onSubmit={handleSubmit}
       />
 
-      <ResetPasswordModal
-        isOpen={!!resetPasswordUser}
-        user={resetPasswordUser}
-        isSubmitting={isResettingPassword}
-        errorMessage={resetPasswordError}
-        onClose={() => {
-          setResetPasswordUser(null);
-          setResetPasswordError('');
-        }}
-        onSubmit={handleResetPassword}
-      />
-
-      <UserDetailModal isOpen={!!detailUser} user={detailUser} onClose={() => setDetailUser(null)} />
+      <Modal
+        isOpen={Boolean(deletingEmployee)}
+        onClose={() => setDeletingEmployee(null)}
+        title="Xóa nhân sự"
+        subtitle={deletingEmployee ? `Bạn có chắc muốn xóa hồ sơ "${deletingEmployee.name}"? Hành động này không thể hoàn tác.` : undefined}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeletingEmployee(null)}>
+              Hủy
+            </Button>
+            <Button variant="danger" onClick={handleDeleteConfirm}>
+              Xóa nhân sự
+            </Button>
+          </>
+        }
+      >
+        <div />
+      </Modal>
     </div>
   );
-}
-
-function getErrorMessage(err: unknown, fallback: string): string {
-  if (err && typeof err === 'object' && 'response' in err) {
-    const response = (err as { response?: { data?: { message?: string } } }).response;
-    if (response?.data?.message) return response.data.message;
-  }
-  return fallback;
 }

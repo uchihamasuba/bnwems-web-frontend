@@ -8,7 +8,7 @@ export interface KpiCardItem {
   label: string;
   value: React.ReactNode;
   icon: LucideIcon;
-  iconColor?: 'blue' | 'amber' | 'red' | 'green';
+  iconColor?: 'blue' | 'amber' | 'red' | 'green' | 'pink';
   changeLabel?: string;
   changeDirection?: 'up' | 'down';
 }
@@ -22,6 +22,7 @@ const ICON_BG: Record<NonNullable<KpiCardItem['iconColor']>, string> = {
   amber: 'bg-amber-50 text-amber-600',
   red: 'bg-red-50 text-red-600',
   green: 'bg-green-50 text-green-600',
+  pink: 'bg-pink-50 text-pink-600',
 };
 
 // Map số lượng KPI card -> grid cols để hàng luôn cân đối (vd 3 card thì chia đều 3 cột,
