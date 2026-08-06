@@ -112,12 +112,15 @@ export function CatalogItemFormModal({
           onChange={(e) => setValues((v) => ({ ...v, itemName: e.target.value }))}
         />
         <Select
-          label="Loại thiết bị"
+          label="Nhóm sản phẩm"
           required
           value={values.typeId}
           onChange={(e) => setValues((v) => ({ ...v, typeId: e.target.value }))}
-          options={types.map((t) => ({ value: t.typeId, label: t.categoryName ? `${t.categoryName} — ${t.typeName}` : t.typeName }))}
-          placeholder="-- Chọn loại thiết bị --"
+          options={types.map((t) => ({
+            value: t.typeId,
+            label: t.categoryName && t.categoryName !== t.typeName ? `${t.categoryName} — ${t.typeName}` : t.typeName,
+          }))}
+          placeholder="-- Chọn nhóm sản phẩm --"
         />
         <Input label="Đơn vị tính" required value={values.unit} onChange={(e) => setValues((v) => ({ ...v, unit: e.target.value }))} />
         <Input

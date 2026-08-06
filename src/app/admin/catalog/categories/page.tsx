@@ -97,12 +97,12 @@ export default function Page() {
       key: 'actions',
       label: 'Thao tác',
       render: (row) => (
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           <Link
             href={`/admin/catalog/categories/${row.categoryId}`}
             aria-label="Xem chi tiết"
             title="Xem chi tiết"
-            className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            className="inline-flex rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600"
           >
             <Eye className="h-4 w-4" />
           </Link>
@@ -112,7 +112,7 @@ export default function Page() {
               aria-label="Chỉnh sửa"
               title="Chỉnh sửa"
               onClick={() => setFormModal({ mode: 'edit', category: row })}
-              className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600"
+              className="inline-flex rounded-md p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600"
             >
               <Pencil className="h-4 w-4" />
             </button>
