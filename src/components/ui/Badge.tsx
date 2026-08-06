@@ -1,6 +1,6 @@
 import React from 'react';
 
-type BadgeVariant = 'success' | 'warning' | 'error' | 'info' | 'neutral';
+export type BadgeVariant = 'success' | 'warning' | 'error' | 'info' | 'neutral';
 
 const variantClasses: Record<BadgeVariant, string> = {
   success: 'bg-green-100 text-green-700 ring-green-600/20',

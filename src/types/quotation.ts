@@ -15,6 +15,15 @@ export interface QuotationItem {
   price: number;
   discount?: number;
   lineTotal?: number; // generated column, chỉ có khi đọc lại (GET)
+  // ⚠️ 2026-07-07: "nội dung báo giá" cho hạng mục — theo schema mới phát hiện trên MySQL local
+  // (equipment_categories → equipment_type_details → equipment_type_configs → catalog_items, xem
+  // docs/database.md mục 3), nội dung này lấy từ `equipment_type_details.description` khi
+  // `catalog_items.description` của hạng mục để trống. Bảng quotation_items KHÔNG có cột riêng cho
+  // nội dung này — phải resolve qua chuỗi item → config → type_detail lúc hiển thị. Backend hiện
+  // chưa có join/endpoint nào cho tầng type_detail/config (docs/more-require.md mục (ii)), nên field
+  // này KHÔNG đến từ API — luôn được tính ở client bằng src/utils/catalogItemContent.ts và hiển thị
+  // in nghiêng khi là dữ liệu mock.
+  content?: string;
 }
 
 // GET /api/v1/customers/:customerId/quotations

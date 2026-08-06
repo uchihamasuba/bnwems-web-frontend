@@ -2,11 +2,10 @@
 
 import { useEffect, useState, SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { AxiosError } from 'axios';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/hooks/useAuth';
-import { authApiService } from '@/services/auth.service';
+import { findMockAccount, MOCK_TOKEN_PREFIX } from '@/mocks/authAccounts';
 import { ROLE_DASHBOARD_PATH } from '@/constants/roles';
 
 export default function LoginPage() {
@@ -23,26 +22,30 @@ export default function LoginPage() {
     router.replace(ROLE_DASHBOARD_PATH[user.role.roleName] ?? '/auth/login');
   }, [isAuthLoading, isAuthenticated, user, router]);
 
+  // ⚠️ Đăng nhập tạm KHÔNG gọi backend thật — Aiven cloud DB hiện lệch schema so với
+  // `prisma/schema.prisma` nên `POST /auth/login` luôn trả 400 DB_ERROR (docs/more-require.md mục
+  // (jj)). Dùng 2 tài khoản ảo cố định ở src/mocks/authAccounts.ts cho tới khi backend/DB owner
+  // đồng bộ lại — sau đó khôi phục lại gọi `authApiService.login()` tại đây.
   const handleSubmit = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
     setIsSubmitting(true);
 
     try {
-      const response = await authApiService.login({ username, password });
-      const { token, user: loggedInUser } = response.data;
-      const dashboardPath = ROLE_DASHBOARD_PATH[loggedInUser.role.roleName];
+      const account = findMockAccount(username, password);
+      if (!account) {
+        setError('Sai tên đăng nhập hoặc mật khẩu.');
+        return;
+      }
 
+      const dashboardPath = ROLE_DASHBOARD_PATH[account.user.role.roleName];
       if (!dashboardPath) {
         setError('Vai trò tài khoản không được hỗ trợ trên web.');
         return;
       }
 
-      login(token, loggedInUser);
+      login(`${MOCK_TOKEN_PREFIX}${account.username}`, account.user);
       router.replace(dashboardPath);
-    } catch (err) {
-      const axiosError = err as AxiosError<{ message?: string }>;
-      setError(axiosError.response?.data?.message ?? 'Đăng nhập thất bại, vui lòng thử lại.');
     } finally {
       setIsSubmitting(false);
     }

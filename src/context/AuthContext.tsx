@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { authApiService } from '../services/auth.service';
+import { MOCK_TOKEN_PREFIX } from '../mocks/authAccounts';
 import type { AuthUser } from '../types/auth';
 
 export type { AuthUser };
@@ -32,6 +33,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time session hydration from localStorage on mount, not a render loop
         setToken(storedToken);
         setUser(JSON.parse(storedUser));
+
+        // Phiên đăng nhập ảo (xem src/mocks/authAccounts.ts) không có backend thật để xác thực lại —
+        // tin thẳng dữ liệu đã lưu trong localStorage, bỏ qua bước gọi getProfile() bên dưới.
+        if (storedToken.startsWith(MOCK_TOKEN_PREFIX)) return;
 
         // Re-validate the stored token against the current backend — a token
         // issued by a previously configured backend (e.g. after switching

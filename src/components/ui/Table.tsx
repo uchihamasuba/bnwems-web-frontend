@@ -27,7 +27,7 @@ function renderBody<T>(props: Readonly<TableProps<T>>) {
   if (isLoading) {
     return (
       <tr>
-        <td colSpan={columns.length} className="px-4 py-6 text-center text-slate-400">
+        <td colSpan={columns.length} className="px-5 py-8 text-center text-slate-400">
           Đang tải...
         </td>
       </tr>
@@ -37,7 +37,7 @@ function renderBody<T>(props: Readonly<TableProps<T>>) {
   if (rows.length === 0) {
     return (
       <tr>
-        <td colSpan={columns.length} className="px-4 py-6 text-center text-slate-400">
+        <td colSpan={columns.length} className="px-5 py-8 text-center text-slate-400">
           {emptyText}
         </td>
       </tr>
@@ -45,9 +45,9 @@ function renderBody<T>(props: Readonly<TableProps<T>>) {
   }
 
   return rows.map((row) => (
-    <tr key={rowKey(row)} className="hover:bg-slate-50">
+    <tr key={rowKey(row)} className="transition-colors hover:bg-slate-50/70">
       {columns.map((col) => (
-        <td key={col.key} className={`px-4 py-3 text-slate-700 ${col.className ?? ''}`}>
+        <td key={col.key} className={`px-5 py-4 text-sm text-slate-700 ${col.className ?? ''}`}>
           {renderCellValue(row, col)}
         </td>
       ))}
@@ -58,14 +58,14 @@ function renderBody<T>(props: Readonly<TableProps<T>>) {
 export function Table<T>(props: Readonly<TableProps<T>>) {
   const { columns, isLoading = false, emptyText = 'Không có dữ liệu' } = props;
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-100">
+    <div className="overflow-x-auto rounded-2xl border border-slate-200">
       <table className="min-w-full divide-y divide-slate-100 text-sm">
-        <thead className="bg-slate-50">
+        <thead className="bg-slate-50/80">
           <tr>
             {columns.map((col) => (
               <th
                 key={col.key}
-                className={`px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-500 ${col.className ?? ''}`}
+                className={`whitespace-nowrap px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 ${col.className ?? ''}`}
               >
                 {col.label}
               </th>
