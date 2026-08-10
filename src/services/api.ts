@@ -13,6 +13,8 @@ const api: AxiosInstance = axios.create({
 // Request interceptor — attach JWT token from localStorage
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (config as any).metadata = { startTime: Date.now() };
     if (globalThis.window !== undefined) {
       const token = localStorage.getItem('bnwems_token');
       if (token && config.headers) {
@@ -26,7 +28,15 @@ api.interceptors.request.use(
 
 // Response interceptor — handle 401 globally and auto-retry transient DB errors.
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const config = response.config as any;
+    if (process.env.NODE_ENV !== 'production' && config.metadata?.startTime) {
+      const duration = Date.now() - config.metadata.startTime;
+      console.log(`[API ${response.status}] ${config.method?.toUpperCase()} ${config.url} - ${duration}ms`);
+    }
+    return response;
+  },
   async (error: AxiosError) => {
     const isLoginRequest = error.config?.url === '/auth/login';
 
