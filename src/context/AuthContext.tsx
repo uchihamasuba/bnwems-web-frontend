@@ -30,7 +30,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const storedUser = localStorage.getItem('bnwems_user');
         if (!storedToken || !storedUser) return;
 
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time session hydration from localStorage on mount, not a render loop
         setToken(storedToken);
         setUser(JSON.parse(storedUser));
 
